@@ -121,8 +121,9 @@ class LayoutEngine:
         # 但为了安全起见，我们需要确保所有方向的距离都 >= min_distance
 
         # 为了确保没有重叠，我们需要增加安全系数
-        # 根据实际测试，需要将距离增加约5%来避免对角重叠
-        center_distance = min_distance * 1.05
+        # 根据详细测试，需要将距离增加12%来完全避免对角重叠
+        # 在零间距时仍能保证不重叠
+        center_distance = min_distance * 1.12
 
         # 行间距：六边形密排中，行间距 = 圆心距离 * √3/2
         row_offset_y = center_distance * math.sqrt(3) / 2
@@ -228,8 +229,11 @@ class LayoutEngine:
                     paste_x = center_x - self.badge_radius_px
                     paste_y = center_y - self.badge_radius_px
 
-                    # 粘贴到画布
-                    canvas.paste(circle_img, (paste_x, paste_y))
+                    # 粘贴到画布（使用透明度遮罩）
+                    if circle_img.mode == 'RGBA':
+                        canvas.paste(circle_img, (paste_x, paste_y), circle_img)
+                    else:
+                        canvas.paste(circle_img, (paste_x, paste_y))
 
                 except Exception as e:
                     print(f"放置图片失败 {image_item.filename}: {e}")

@@ -101,12 +101,9 @@ class ImageProcessor:
         # 应用圆形遮罩
         circle_img.paste(temp_canvas, (0, 0))
         circle_img.putalpha(mask)
-        
-        # 转换为RGB（去除透明度）
-        final_img = Image.new('RGB', (circle_size, circle_size), (255, 255, 255))
-        final_img.paste(circle_img, (0, 0), circle_img)
-        
-        return final_img
+
+        # 保持RGBA格式以保留透明度
+        return circle_img
     
     def _create_blank_circle(self):
         """创建空白圆形图片"""
