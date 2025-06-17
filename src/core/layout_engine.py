@@ -4,9 +4,10 @@ A4排版引擎模块
 """
 
 import math
-from PIL import Image, ImageDraw, ImageTk
+from PIL import Image, ImageDraw
 import sys
 import os
+from io import BytesIO
 
 # 添加父目录到路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -150,37 +151,39 @@ class LayoutEngine:
             spacing_mm: 间距（毫米）
             margin_mm: 页边距（毫米）
             preview_scale: 预览缩放比例
-        返回: PIL.ImageTk.PhotoImage - 预览图片
+        返回: QPixmap - 预览图片
         """
         try:
+            from PySide6.QtGui import QPixmap
+
             # 计算布局
             if layout_type == 'grid':
                 layout = self.calculate_grid_layout(spacing_mm, margin_mm)
             else:
                 layout = self.calculate_compact_layout(spacing_mm, margin_mm)
-            
+
             # 创建A4画布
             canvas = Image.new('RGB', (self.a4_width_px, self.a4_height_px), (255, 255, 255))
-            
+
             # 绘制页边距线（用于预览）
             draw = ImageDraw.Draw(canvas)
             margin_px = mm_to_pixels(margin_mm)
             draw.rectangle([
-                margin_px, margin_px, 
+                margin_px, margin_px,
                 self.a4_width_px - margin_px, self.a4_height_px - margin_px
             ], outline=(200, 200, 200), width=2)
-            
+
             # 放置圆形图片
             positions = layout['positions']
             for i, image_item in enumerate(image_items):
                 if i >= len(positions):
                     break  # 超出可放置数量
-                
+
                 try:
                     # 获取圆形图片
                     from core.image_processor import ImageProcessor
                     processor = ImageProcessor()
-                    
+
                     circle_img = processor.create_circular_crop(
                         image_item.file_path,
                         image_item.scale,
@@ -188,15 +191,15 @@ class LayoutEngine:
                         image_item.offset_y,
                         image_item.rotation
                     )
-                    
+
                     # 计算粘贴位置（圆心位置转换为左上角位置）
                     center_x, center_y = positions[i]
                     paste_x = center_x - self.badge_radius_px
                     paste_y = center_y - self.badge_radius_px
-                    
+
                     # 粘贴到画布
                     canvas.paste(circle_img, (paste_x, paste_y))
-                    
+
                 except Exception as e:
                     print(f"放置图片失败 {image_item.filename}: {e}")
                     # 绘制占位圆形
@@ -205,7 +208,7 @@ class LayoutEngine:
                         center_x - self.badge_radius_px, center_y - self.badge_radius_px,
                         center_x + self.badge_radius_px, center_y + self.badge_radius_px
                     ], outline=(200, 200, 200), width=2)
-            
+
             # 绘制剩余位置的占位符
             for i in range(len(image_items), len(positions)):
                 center_x, center_y = positions[i]
@@ -213,19 +216,28 @@ class LayoutEngine:
                     center_x - self.badge_radius_px, center_y - self.badge_radius_px,
                     center_x + self.badge_radius_px, center_y + self.badge_radius_px
                 ], outline=(220, 220, 220), width=1)
-            
+
             # 缩放到预览大小
             preview_width = int(self.a4_width_px * preview_scale)
             preview_height = int(self.a4_height_px * preview_scale)
             preview_img = canvas.resize((preview_width, preview_height), Image.Resampling.LANCZOS)
-            
-            return ImageTk.PhotoImage(preview_img)
-            
+
+            # 转换为QPixmap
+            buffer = BytesIO()
+            preview_img.save(buffer, format='PNG')
+            buffer.seek(0)
+
+            pixmap = QPixmap()
+            pixmap.loadFromData(buffer.getvalue())
+            return pixmap
+
         except Exception as e:
             print(f"创建排版预览失败: {e}")
             # 返回空白预览
-            blank_img = Image.new('RGB', (400, 566), (240, 240, 240))
-            return ImageTk.PhotoImage(blank_img)
+            from PySide6.QtGui import QPixmap
+            blank_pixmap = QPixmap(400, 566)
+            blank_pixmap.fill()  # 填充为白色
+            return blank_pixmap
     
     def get_layout_info(self, layout_type='grid', spacing_mm=DEFAULT_SPACING, margin_mm=DEFAULT_MARGIN):
         """

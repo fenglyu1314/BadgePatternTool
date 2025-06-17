@@ -350,12 +350,132 @@ class MainWindow(QMainWindow):
         
     def create_layout_area(self):
         """创建A4排版预览区域"""
-        layout = QVBoxLayout(self.layout_tab)
-        
-        # 临时标签
-        label = QLabel("A4排版预览功能开发中...")
-        label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(label)
+        layout = QHBoxLayout(self.layout_tab)
+
+        # 预览区域
+        preview_frame = QGroupBox("A4排版预览")
+        layout.addWidget(preview_frame)
+
+        preview_layout = QVBoxLayout(preview_frame)
+
+        # 信息栏
+        info_layout = QHBoxLayout()
+
+        title_label = QLabel("A4排版预览")
+        title_label.setStyleSheet("font-weight: bold; font-size: 12px;")
+        info_layout.addWidget(title_label)
+
+        info_layout.addItem(QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum))
+
+        # 布局信息标签
+        self.layout_info_label = QLabel("")
+        self.layout_info_label.setStyleSheet("color: #666; font-size: 10px;")
+        info_layout.addWidget(self.layout_info_label)
+
+        preview_layout.addLayout(info_layout)
+
+        # 滚动区域
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        preview_layout.addWidget(scroll_area)
+
+        # 预览标签
+        self.layout_preview_label = QLabel()
+        self.layout_preview_label.setAlignment(Qt.AlignCenter)
+        self.layout_preview_label.setStyleSheet("border: 1px solid #ccc; background-color: white;")
+        scroll_area.setWidget(self.layout_preview_label)
+
+        # 控制面板
+        control_frame = QGroupBox("排版控制")
+        control_frame.setFixedWidth(200)
+        layout.addWidget(control_frame)
+
+        control_layout = QVBoxLayout(control_frame)
+
+        # 布局模式
+        layout_mode_group = QGroupBox("排列模式")
+        control_layout.addWidget(layout_mode_group)
+
+        layout_mode_layout = QVBoxLayout(layout_mode_group)
+
+        self.layout_mode_group = QButtonGroup()
+
+        grid_radio2 = QRadioButton("网格排列")
+        grid_radio2.setChecked(True)
+        grid_radio2.toggled.connect(lambda: self.set_layout_mode("grid") if grid_radio2.isChecked() else None)
+        self.layout_mode_group.addButton(grid_radio2)
+        layout_mode_layout.addWidget(grid_radio2)
+
+        compact_radio2 = QRadioButton("紧密排列")
+        compact_radio2.toggled.connect(lambda: self.set_layout_mode("compact") if compact_radio2.isChecked() else None)
+        self.layout_mode_group.addButton(compact_radio2)
+        layout_mode_layout.addWidget(compact_radio2)
+
+        # 间距控制
+        spacing_group = QGroupBox("间距设置")
+        control_layout.addWidget(spacing_group)
+
+        spacing_layout = QVBoxLayout(spacing_group)
+
+        self.spacing_label2 = QLabel(f"间距: {self.spacing_value}mm")
+        spacing_layout.addWidget(self.spacing_label2)
+
+        self.spacing_slider2 = QSlider(Qt.Horizontal)
+        self.spacing_slider2.setRange(0, 20)
+        self.spacing_slider2.setValue(int(self.spacing_value))
+        self.spacing_slider2.valueChanged.connect(self.on_spacing_change2)
+        spacing_layout.addWidget(self.spacing_slider2)
+
+        # 页边距控制
+        margin_group = QGroupBox("页边距")
+        control_layout.addWidget(margin_group)
+
+        margin_layout = QVBoxLayout(margin_group)
+
+        self.margin_label = QLabel(f"边距: {self.margin_value}mm")
+        margin_layout.addWidget(self.margin_label)
+
+        self.margin_slider = QSlider(Qt.Horizontal)
+        self.margin_slider.setRange(5, 30)
+        self.margin_slider.setValue(int(self.margin_value))
+        self.margin_slider.valueChanged.connect(self.on_margin_change)
+        margin_layout.addWidget(self.margin_slider)
+
+        # 预览缩放控制
+        preview_group = QGroupBox("预览缩放")
+        control_layout.addWidget(preview_group)
+
+        preview_layout_inner = QVBoxLayout(preview_group)
+
+        self.preview_scale_label = QLabel(f"缩放: {int(self.preview_scale_value * 100)}%")
+        preview_layout_inner.addWidget(self.preview_scale_label)
+
+        self.preview_scale_slider = QSlider(Qt.Horizontal)
+        self.preview_scale_slider.setRange(20, 100)  # 20% 到 100%
+        self.preview_scale_slider.setValue(int(self.preview_scale_value * 100))
+        self.preview_scale_slider.valueChanged.connect(self.on_preview_scale_change)
+        preview_layout_inner.addWidget(self.preview_scale_slider)
+
+        # 操作按钮
+        btn_layout = QVBoxLayout()
+
+        refresh_btn = QPushButton("刷新预览")
+        refresh_btn.clicked.connect(self.update_layout_preview)
+        btn_layout.addWidget(refresh_btn)
+
+        auto_layout_btn2 = QPushButton("自动排版")
+        auto_layout_btn2.clicked.connect(self.auto_layout)
+        btn_layout.addWidget(auto_layout_btn2)
+
+        control_layout.addLayout(btn_layout)
+
+        # 添加弹性空间
+        control_layout.addItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
+
+        # 初始显示提示
+        self.show_layout_hint()
         
     # 事件处理方法
     def import_images(self):
@@ -698,14 +818,69 @@ class MainWindow(QMainWindow):
 
             QMessageBox.information(self, "提示", "编辑参数已保存，可在A4排版预览中查看效果")
 
+    def show_layout_hint(self):
+        """显示排版提示"""
+        self.layout_preview_label.setText("导入图片后\n自动显示排版预览\n\n可使用滚动条\n查看完整A4页面")
+        self.layout_preview_label.setStyleSheet("border: 1px solid #ccc; background-color: #f5f5f5; color: #666;")
+        self.layout_info_label.setText("")
+
+    def on_spacing_change2(self, value):
+        """A4预览区间距改变事件"""
+        self.spacing_value = value
+        self.spacing_label2.setText(f"间距: {value}mm")
+        # 同步主设置区的滑块
+        self.spacing_slider.setValue(value)
+        self.update_layout_preview()
+
+    def on_margin_change(self, value):
+        """页边距改变事件"""
+        self.margin_value = value
+        self.margin_label.setText(f"边距: {value}mm")
+        self.update_layout_preview()
+
+    def on_preview_scale_change(self, value):
+        """预览缩放改变事件"""
+        scale = value / 100.0
+        self.preview_scale_value = scale
+        self.preview_scale_label.setText(f"缩放: {value}%")
+        self.update_layout_preview()
+
     def update_layout_preview(self):
         """更新A4排版预览"""
         if not self.image_items:
-            # 显示提示信息
+            self.show_layout_hint()
             return
 
-        # 临时实现：显示图片数量
-        self.status_bar.showMessage(f"排版预览已更新 - 共{len(self.image_items)}张图片")
+        try:
+            # 获取当前设置
+            layout_type = self.layout_mode
+            spacing_mm = self.spacing_value
+            margin_mm = self.margin_value
+
+            # 创建排版预览
+            preview_pixmap = self.layout_engine.create_layout_preview(
+                self.image_items, layout_type, spacing_mm, margin_mm,
+                preview_scale=self.preview_scale_value
+            )
+
+            # 更新预览显示
+            self.layout_preview_label.setPixmap(preview_pixmap)
+            self.layout_preview_label.setStyleSheet("border: 1px solid #ccc; background-color: white;")
+
+            # 调整标签大小以适应图片
+            self.layout_preview_label.resize(preview_pixmap.size())
+
+            # 更新布局信息
+            layout_info = self.layout_engine.get_layout_info(layout_type, spacing_mm, margin_mm)
+            info_text = f"可放置: {layout_info['max_count']}个 | 已有: {len(self.image_items)}个"
+            self.layout_info_label.setText(info_text)
+
+            # 更新状态栏
+            self.status_bar.showMessage(f"排版预览已更新 - {layout_info['type']}模式")
+
+        except Exception as e:
+            print(f"更新排版预览失败: {e}")
+            self.show_layout_hint()
 
     def auto_layout(self):
         """自动排版（为所有图片应用最佳参数）"""
