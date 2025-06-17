@@ -245,11 +245,16 @@ class MainWindow(QMainWindow):
         self.format_combo.addItems(["pdf", "png", "jpg"])
         export_layout.addWidget(self.format_combo)
         
+        # 自动排版按钮
+        auto_layout_btn = QPushButton("自动排版")
+        auto_layout_btn.clicked.connect(self.auto_layout)
+        export_layout.addWidget(auto_layout_btn)
+
         # 导出按钮
         export_btn = QPushButton("导出文件")
         export_btn.clicked.connect(self.export_file)
         export_layout.addWidget(export_btn)
-        
+
         # 添加弹性空间
         layout.addItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
         
@@ -413,16 +418,112 @@ class MainWindow(QMainWindow):
         
     def export_pdf(self):
         """导出PDF"""
-        QMessageBox.information(self, "提示", "导出PDF功能开发中...")
-        
+        self.export_file_with_format('pdf')
+
     def export_png(self):
         """导出PNG"""
-        QMessageBox.information(self, "提示", "导出PNG功能开发中...")
-        
+        self.export_file_with_format('png')
+
     def export_file(self):
         """导出文件"""
         format_type = self.format_combo.currentText()
-        QMessageBox.information(self, "提示", f"导出{format_type.upper()}功能开发中...")
+        self.export_file_with_format(format_type)
+
+    def export_file_with_format(self, format_type):
+        """
+        导出文件（通用方法）
+        参数: format_type - 文件格式 ('pdf', 'png', 'jpg')
+        """
+        try:
+            # 验证导出设置
+            is_valid, error_msg = self.export_manager.validate_export_settings(self.image_items, "temp")
+            if not is_valid:
+                QMessageBox.warning(self, "导出失败", error_msg)
+                return
+
+            # 获取当前设置
+            layout_type = self.layout_mode
+            spacing_mm = self.spacing_value
+            margin_mm = self.margin_value
+
+            # 选择保存路径
+            suggested_filename = self.export_manager.get_suggested_filename(format_type.upper(), layout_type)
+
+            if format_type.lower() == 'pdf':
+                file_filter = "PDF文件 (*.pdf)"
+                default_ext = ".pdf"
+            elif format_type.lower() == 'png':
+                file_filter = "PNG文件 (*.png)"
+                default_ext = ".png"
+            else:  # jpg
+                file_filter = "JPEG文件 (*.jpg)"
+                default_ext = ".jpg"
+
+            from PySide6.QtWidgets import QFileDialog
+            output_path, _ = QFileDialog.getSaveFileName(
+                self,
+                f"保存{format_type.upper()}文件",
+                suggested_filename,
+                file_filter
+            )
+
+            if not output_path:
+                return  # 用户取消
+
+            # 确保文件扩展名正确
+            if not output_path.lower().endswith(default_ext):
+                output_path += default_ext
+
+            # 显示进度提示
+            self.status_bar.showMessage(f"正在导出{format_type.upper()}文件...")
+
+            # 执行导出
+            if format_type.lower() == 'pdf':
+                success, count = self.export_manager.export_to_pdf(
+                    self.image_items, output_path, layout_type, spacing_mm, margin_mm
+                )
+            else:
+                success, count = self.export_manager.export_to_image(
+                    self.image_items, output_path, format_type.upper(),
+                    layout_type, spacing_mm, margin_mm
+                )
+
+            if success:
+                self.status_bar.showMessage(f"{format_type.upper()}导出成功")
+                QMessageBox.information(
+                    self,
+                    "导出成功",
+                    f"成功导出{count}张图片到{format_type.upper()}文件！\n\n"
+                    f"文件路径：{output_path}\n"
+                    f"布局模式：{'网格排列' if layout_type == 'grid' else '紧密排列'}\n"
+                    f"图片数量：{count}张"
+                )
+
+                # 询问是否打开文件夹
+                reply = QMessageBox.question(
+                    self,
+                    "打开文件夹",
+                    "是否打开文件所在文件夹？",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.Yes
+                )
+                if reply == QMessageBox.Yes:
+                    import subprocess
+                    import platform
+                    if platform.system() == "Windows":
+                        subprocess.run(['explorer', '/select,', output_path.replace('/', '\\')])
+                    elif platform.system() == "Darwin":  # macOS
+                        subprocess.run(['open', '-R', output_path])
+                    else:  # Linux
+                        subprocess.run(['xdg-open', os.path.dirname(output_path)])
+
+            else:
+                self.status_bar.showMessage(f"{format_type.upper()}导出失败")
+                QMessageBox.critical(self, "导出失败", f"导出{format_type.upper()}文件时发生错误")
+
+        except Exception as e:
+            self.status_bar.showMessage("导出失败")
+            QMessageBox.critical(self, "错误", f"导出过程中发生错误：{str(e)}")
         
     def select_all(self):
         """全选"""
@@ -606,6 +707,40 @@ class MainWindow(QMainWindow):
         # 临时实现：显示图片数量
         self.status_bar.showMessage(f"排版预览已更新 - 共{len(self.image_items)}张图片")
 
+    def auto_layout(self):
+        """自动排版（为所有图片应用最佳参数）"""
+        if not self.image_items:
+            QMessageBox.warning(self, "提示", "请先导入图片")
+            return
+
+        try:
+            processed_count = 0
+            for image_item in self.image_items:
+                if not image_item.is_processed:
+                    # 计算最佳缩放
+                    optimal_scale = self.image_processor.get_optimal_scale(image_item.file_path)
+
+                    # 应用最佳参数
+                    image_item.scale = optimal_scale
+                    image_item.offset_x = 0
+                    image_item.offset_y = 0
+                    image_item.rotation = 0
+                    image_item.is_processed = True
+
+                    processed_count += 1
+
+            # 更新预览
+            self.update_layout_preview()
+
+            if processed_count > 0:
+                self.status_bar.showMessage(f"自动排版完成，处理了 {processed_count} 张图片")
+                QMessageBox.information(self, "完成", f"自动排版完成！\n处理了 {processed_count} 张图片")
+            else:
+                QMessageBox.information(self, "提示", "所有图片都已处理过")
+
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"自动排版失败：{str(e)}")
+
     def show_about(self):
         """显示关于对话框"""
         QMessageBox.about(
@@ -614,5 +749,5 @@ class MainWindow(QMainWindow):
             f"{APP_TITLE} v{APP_VERSION}\n\n"
             "徽章图案制作工具\n"
             "支持图片裁剪和A4排版\n\n"
-            "开发中..."
+            "基于PySide6开发"
         )
