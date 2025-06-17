@@ -17,8 +17,17 @@ class ImageProcessor:
     """图片处理器类"""
     
     def __init__(self):
-        self.badge_diameter_px = BADGE_DIAMETER_PX
-        self.badge_radius_px = self.badge_diameter_px // 2
+        pass
+
+    @property
+    def badge_diameter_px(self):
+        """获取当前圆形直径（像素）"""
+        return app_config.badge_diameter_px
+
+    @property
+    def badge_radius_px(self):
+        """获取当前圆形半径（像素）"""
+        return app_config.badge_radius_px
         
     def create_circular_crop(self, image_path, scale=1.0, offset_x=0, offset_y=0, rotation=0):
         """

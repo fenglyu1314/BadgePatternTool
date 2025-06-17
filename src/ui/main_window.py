@@ -6,14 +6,14 @@
 import sys
 import os
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
-    QLabel, QPushButton, QListWidget, QTabWidget, QFrame,
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+    QLabel, QPushButton, QListWidget, QListWidgetItem,
     QSlider, QRadioButton, QComboBox, QButtonGroup, QSpinBox,
-    QScrollArea, QMessageBox, QFileDialog, QStatusBar,
-    QMenuBar, QMenu, QSplitter, QGroupBox, QSpacerItem, QSizePolicy
+    QMessageBox, QStatusBar,
+    QSplitter, QGroupBox, QSpacerItem, QSizePolicy
 )
-from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QPixmap, QPainter, QAction
+from PySide6.QtCore import Qt, QTimer, QSize
+from PySide6.QtGui import QAction, QIcon
 
 # 添加父目录到路径以便导入utils
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -22,6 +22,7 @@ from utils.file_handler import FileHandler, ImageItem
 from core.image_processor import ImageProcessor, CircleEditor
 from core.layout_engine import LayoutEngine
 from core.export_manager import ExportManager
+from ui.interactive_preview_label import InteractiveScrollArea
 
 class MainWindow(QMainWindow):
     """主窗口类"""
@@ -48,24 +49,55 @@ class MainWindow(QMainWindow):
         self.offset_y_value = 0
         self.preview_scale_value = 0.5  # 预览缩放比例
 
+        # 初始化防抖定时器
+        self.setup_debounce_timers()
+
+        # 设置配置监听器
+        app_config.add_listener(self.on_config_changed)
+
         self.setup_window()
         self.create_menu()
         self.create_layout()
         self.create_status_bar()
-        
+
+    def setup_debounce_timers(self):
+        """设置防抖定时器"""
+        # 编辑预览更新定时器（用于缩放和位置调整）
+        self.edit_preview_timer = QTimer()
+        self.edit_preview_timer.setSingleShot(True)
+        self.edit_preview_timer.timeout.connect(self.delayed_update_edit_preview)
+
+        # 布局预览更新定时器（用于A4排版预览）
+        self.layout_preview_timer = QTimer()
+        self.layout_preview_timer.setSingleShot(True)
+        self.layout_preview_timer.timeout.connect(self.delayed_update_layout_preview)
+
+        # 图片列表更新定时器（用于数量变化）
+        self.list_update_timer = QTimer()
+        self.list_update_timer.setSingleShot(True)
+        self.list_update_timer.timeout.connect(self.delayed_update_image_list)
+
+        # 防抖延迟时间（毫秒）
+        self.debounce_delay = 150  # 150ms延迟，平衡响应性和性能
+        self.layout_debounce_delay = 300  # 布局预览使用更长的延迟
+
     def setup_window(self):
         """设置窗口基本属性"""
         self.setWindowTitle(f"{APP_TITLE} v{APP_VERSION}")
         self.setGeometry(100, 100, WINDOW_WIDTH, WINDOW_HEIGHT)
-        
+
         # 设置窗口居中
         screen = self.screen().availableGeometry()
         x = (screen.width() - WINDOW_WIDTH) // 2
         y = (screen.height() - WINDOW_HEIGHT) // 2
         self.move(x, y)
-        
-        # 设置最小窗口大小
-        self.setMinimumSize(800, 600)
+
+        # 设置固定窗口大小（不可调整）
+        self.setFixedSize(WINDOW_WIDTH, WINDOW_HEIGHT)
+
+        # 设置窗口标志：禁用最大化按钮，保留最小化和关闭按钮
+        flags = Qt.Window | Qt.WindowMinimizeButtonHint | Qt.WindowCloseButtonHint | Qt.WindowTitleHint
+        self.setWindowFlags(flags)
         
     def create_menu(self):
         """创建菜单栏"""
@@ -87,9 +119,21 @@ class MainWindow(QMainWindow):
         export_png_action = QAction("导出PNG...", self)
         export_png_action.triggered.connect(self.export_png)
         file_menu.addAction(export_png_action)
-        
+
         file_menu.addSeparator()
-        
+
+        # 打印功能
+        print_action = QAction("打印...", self)
+        print_action.setShortcut("Ctrl+P")
+        print_action.triggered.connect(self.print_layout)
+        file_menu.addAction(print_action)
+
+        print_preview_action = QAction("打印预览...", self)
+        print_preview_action.triggered.connect(self.print_preview)
+        file_menu.addAction(print_preview_action)
+
+        file_menu.addSeparator()
+
         exit_action = QAction("退出", self)
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
@@ -132,19 +176,31 @@ class MainWindow(QMainWindow):
         splitter = QSplitter(Qt.Horizontal)
         main_layout.addWidget(splitter)
         
-        # 创建三个主要区域
-        self.create_image_list_panel(splitter)
-        self.create_edit_preview_panel(splitter)
-        self.create_settings_panel(splitter)
-        
-        # 设置分割器比例
-        splitter.setSizes([250, 600, 200])
+        # 创建四个主要区域
+        self.create_image_list_panel(splitter)      # 1. 图片列表
+        self.create_single_edit_panel(splitter)     # 2. 单图编辑区域
+        self.create_a4_preview_panel(splitter)      # 3. A4排版预览
+        self.create_control_panel(splitter)         # 4. 排版控制和导出
+
+        # 设置各列固定宽度
+        # 禁用分割器的拖拽调整
+        splitter.setChildrenCollapsible(False)
+
+        # 设置固定宽度（总计1380px，窗口1420px，留40px边距）
+        # 图片列表: 260px, 单图编辑: 340px, A4预览: 480px, 控制面板: 300px
+        column_widths = [260, 340, 480, 300]
+        splitter.setSizes(column_widths)
+
+        # 设置各个面板的固定宽度
+        for i in range(splitter.count()):
+            splitter.widget(i).setMinimumWidth(column_widths[i])
+            splitter.widget(i).setMaximumWidth(column_widths[i])
         
     def create_image_list_panel(self, parent):
         """创建图片列表面板（左侧）"""
         # 图片列表框架
         list_frame = QGroupBox("图片列表")
-        list_frame.setFixedWidth(280)  # 增加宽度以容纳数量控制
+        # 宽度由splitter控制，不需要单独设置
         parent.addWidget(list_frame)
 
         layout = QVBoxLayout(list_frame)
@@ -157,43 +213,14 @@ class MainWindow(QMainWindow):
         # 图片列表
         self.image_listbox = QListWidget()
         self.image_listbox.itemSelectionChanged.connect(self.on_image_select)
+
+        # 设置列表显示模式和样式
+        self.image_listbox.setViewMode(QListWidget.ListMode)  # 列表模式，显示图标和文字
+        self.image_listbox.setIconSize(QSize(48, 48))  # 设置图标大小
+        self.image_listbox.setSpacing(2)  # 设置项目间距
+        self.image_listbox.setUniformItemSizes(True)  # 统一项目大小
+
         layout.addWidget(self.image_listbox)
-
-        # 数量控制区域
-        quantity_group = QGroupBox("数量设置")
-        layout.addWidget(quantity_group)
-
-        quantity_layout = QVBoxLayout(quantity_group)
-
-        # 数量标签和输入框
-        quantity_input_layout = QHBoxLayout()
-
-        quantity_input_layout.addWidget(QLabel("数量:"))
-
-        self.quantity_spinbox = QSpinBox()
-        self.quantity_spinbox.setRange(1, 50)  # 最多50个
-        self.quantity_spinbox.setValue(1)
-        self.quantity_spinbox.valueChanged.connect(self.on_quantity_change)
-        quantity_input_layout.addWidget(self.quantity_spinbox)
-
-        quantity_layout.addLayout(quantity_input_layout)
-
-        # 快速设置按钮
-        quick_btn_layout = QHBoxLayout()
-
-        btn_1 = QPushButton("1")
-        btn_1.clicked.connect(lambda: self.set_quantity(1))
-        quick_btn_layout.addWidget(btn_1)
-
-        btn_5 = QPushButton("5")
-        btn_5.clicked.connect(lambda: self.set_quantity(5))
-        quick_btn_layout.addWidget(btn_5)
-
-        btn_10 = QPushButton("10")
-        btn_10.clicked.connect(lambda: self.set_quantity(10))
-        quick_btn_layout.addWidget(btn_10)
-
-        quantity_layout.addLayout(quick_btn_layout)
 
         # 操作按钮
         btn_layout = QHBoxLayout()
@@ -207,80 +234,193 @@ class MainWindow(QMainWindow):
         btn_layout.addWidget(clear_btn)
 
         layout.addLayout(btn_layout)
-        
-    def create_edit_preview_panel(self, parent):
-        """创建编辑预览面板（中间）"""
-        # 编辑预览框架
-        preview_frame = QGroupBox("编辑预览区")
+
+    def create_single_edit_panel(self, parent):
+        """创建单图编辑面板（中间）"""
+        # 单图编辑框架
+        edit_frame = QGroupBox("单图编辑区")
+        parent.addWidget(edit_frame)
+
+        layout = QVBoxLayout(edit_frame)
+
+        # 预览区域（上半部分）
+        preview_frame = QGroupBox("圆形预览")
+        layout.addWidget(preview_frame)
+
+        preview_layout = QVBoxLayout(preview_frame)
+
+        # 预览标签
+        self.preview_label = QLabel()
+        self.preview_label.setFixedSize(280, 280)
+        self.preview_label.setAlignment(Qt.AlignCenter)
+        self.preview_label.setStyleSheet("border: 2px solid #ccc; background-color: white;")
+        preview_layout.addWidget(self.preview_label)
+
+        # 编辑控制区域（下半部分）
+        self.create_edit_controls(layout)
+
+    def create_a4_preview_panel(self, parent):
+        """创建A4排版预览面板（第三列）"""
+        # A4预览面板框架
+        preview_frame = QGroupBox("A4排版预览")
         parent.addWidget(preview_frame)
-        
+
         layout = QVBoxLayout(preview_frame)
-        
-        # 创建标签页
-        self.tab_widget = QTabWidget()
-        layout.addWidget(self.tab_widget)
-        
-        # 单图编辑标签页
-        self.edit_tab = QWidget()
-        self.tab_widget.addTab(self.edit_tab, "单图编辑")
-        self.create_edit_area()
-        
-        # A4排版预览标签页
-        self.layout_tab = QWidget()
-        self.tab_widget.addTab(self.layout_tab, "A4排版预览")
-        self.create_layout_area()
-        
-    def create_settings_panel(self, parent):
-        """创建参数设置面板（右侧）"""
-        # 设置面板框架
-        settings_frame = QGroupBox("参数设置")
-        settings_frame.setFixedWidth(200)
-        parent.addWidget(settings_frame)
-        
-        layout = QVBoxLayout(settings_frame)
-        
-        # 布局设置组
-        layout_group = QGroupBox("布局设置")
-        layout.addWidget(layout_group)
-        
-        layout_layout = QVBoxLayout(layout_group)
-        
-        # 布局模式选择
-        layout_layout.addWidget(QLabel("排列模式:"))
-        
+
+        # 信息栏
+        info_layout = QHBoxLayout()
+
+        title_label = QLabel("A4排版预览")
+        title_label.setStyleSheet("font-weight: bold; font-size: 12px;")
+        info_layout.addWidget(title_label)
+
+        info_layout.addItem(QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum))
+
+        # 布局信息标签
+        self.layout_info_label = QLabel("")
+        self.layout_info_label.setStyleSheet("color: #666; font-size: 10px;")
+        info_layout.addWidget(self.layout_info_label)
+
+        layout.addLayout(info_layout)
+
+        # 交互式滚动区域
+        self.interactive_scroll_area = InteractiveScrollArea()
+        # 设置最小尺寸以保持A4比例
+        # A4比例约为1:1.414，设置合适的最小尺寸
+        min_width = 350  # 最小宽度
+        min_height = int(min_width * 1.414)  # 按A4比例计算高度
+        self.interactive_scroll_area.setMinimumSize(min_width, min_height)
+        layout.addWidget(self.interactive_scroll_area)
+
+        # 获取内部的预览标签引用（为了兼容现有代码）
+        self.layout_preview_label = self.interactive_scroll_area.preview_label
+
+        # 视图控制按钮
+        view_control_layout = QHBoxLayout()
+
+        fit_btn = QPushButton("适应窗口")
+        fit_btn.clicked.connect(self.fit_preview_to_window)
+        view_control_layout.addWidget(fit_btn)
+
+        reset_view_btn = QPushButton("重置视图")
+        reset_view_btn.clicked.connect(self.reset_preview_view)
+        view_control_layout.addWidget(reset_view_btn)
+
+        refresh_btn = QPushButton("刷新预览")
+        refresh_btn.clicked.connect(self.update_layout_preview)
+        view_control_layout.addWidget(refresh_btn)
+
+        layout.addLayout(view_control_layout)
+
+    def create_control_panel(self, parent):
+        """创建排版控制和导出面板（第四列）"""
+        # 控制面板框架
+        control_frame = QGroupBox("排版控制")
+        parent.addWidget(control_frame)
+
+        layout = QVBoxLayout(control_frame)
+
+        # 布局模式
+        layout_mode_group = QGroupBox("排列模式")
+        layout.addWidget(layout_mode_group)
+
+        layout_mode_layout = QVBoxLayout(layout_mode_group)
+
         self.layout_button_group = QButtonGroup()
-        
+
         grid_radio = QRadioButton("网格排列")
         grid_radio.setChecked(True)
         grid_radio.toggled.connect(lambda: self.set_layout_mode("grid"))
         self.layout_button_group.addButton(grid_radio)
-        layout_layout.addWidget(grid_radio)
-        
+        layout_mode_layout.addWidget(grid_radio)
+
         compact_radio = QRadioButton("紧密排列")
         compact_radio.toggled.connect(lambda: self.set_layout_mode("compact"))
         self.layout_button_group.addButton(compact_radio)
-        layout_layout.addWidget(compact_radio)
-        
-        # 间距设置
-        layout_layout.addWidget(QLabel("间距(mm):"))
+        layout_mode_layout.addWidget(compact_radio)
+
+        # 间距控制
+        spacing_group = QGroupBox("间距设置")
+        layout.addWidget(spacing_group)
+
+        spacing_layout = QVBoxLayout(spacing_group)
+
+        self.spacing_label = QLabel(f"间距: {self.spacing_value}mm")
+        spacing_layout.addWidget(self.spacing_label)
+
         self.spacing_slider = QSlider(Qt.Horizontal)
         self.spacing_slider.setRange(0, 20)
-        self.spacing_slider.setValue(int(DEFAULT_SPACING))
+        self.spacing_slider.setValue(int(self.spacing_value))
         self.spacing_slider.valueChanged.connect(self.on_spacing_change)
-        layout_layout.addWidget(self.spacing_slider)
-        
+        spacing_layout.addWidget(self.spacing_slider)
+
+        # 页边距控制
+        margin_group = QGroupBox("页边距")
+        layout.addWidget(margin_group)
+
+        margin_layout = QVBoxLayout(margin_group)
+
+        self.margin_label = QLabel(f"边距: {self.margin_value}mm")
+        margin_layout.addWidget(self.margin_label)
+
+        self.margin_slider = QSlider(Qt.Horizontal)
+        self.margin_slider.setRange(0, 30)  # 允许0mm最小页边距
+        self.margin_slider.setValue(int(self.margin_value))
+        self.margin_slider.valueChanged.connect(self.on_margin_change)
+        margin_layout.addWidget(self.margin_slider)
+
+        # 圆形尺寸设置
+        size_group = QGroupBox("圆形尺寸")
+        layout.addWidget(size_group)
+
+        size_layout = QVBoxLayout(size_group)
+
+        # 直径设置
+        diameter_layout = QHBoxLayout()
+        diameter_layout.addWidget(QLabel("直径:"))
+
+        self.diameter_spinbox = QSpinBox()
+        self.diameter_spinbox.setRange(10, 100)  # 10-100mm
+        self.diameter_spinbox.setValue(int(app_config.badge_diameter_mm))
+        self.diameter_spinbox.setSuffix("mm")
+        self.diameter_spinbox.valueChanged.connect(self.on_diameter_change)
+        diameter_layout.addWidget(self.diameter_spinbox)
+
+        size_layout.addLayout(diameter_layout)
+
+        # 预设按钮
+        preset_layout = QHBoxLayout()
+
+        btn_25 = QPushButton("25mm")
+        btn_25.clicked.connect(lambda: self.set_diameter(25))
+        preset_layout.addWidget(btn_25)
+
+        btn_32 = QPushButton("32mm")
+        btn_32.clicked.connect(lambda: self.set_diameter(32))
+        preset_layout.addWidget(btn_32)
+
+        btn_58 = QPushButton("58mm")
+        btn_58.clicked.connect(lambda: self.set_diameter(58))
+        preset_layout.addWidget(btn_58)
+
+        btn_68 = QPushButton("68mm")
+        btn_68.clicked.connect(lambda: self.set_diameter(68))
+        preset_layout.addWidget(btn_68)
+
+        size_layout.addLayout(preset_layout)
+
         # 导出设置组
         export_group = QGroupBox("导出设置")
         layout.addWidget(export_group)
-        
+
         export_layout = QVBoxLayout(export_group)
-        
+
         # 导出格式
         export_layout.addWidget(QLabel("输出格式:"))
         self.format_combo = QComboBox()
         self.format_combo.addItems(["pdf", "png", "jpg"])
         export_layout.addWidget(self.format_combo)
-        
+
         # 自动排版按钮
         auto_layout_btn = QPushButton("自动排版")
         auto_layout_btn.clicked.connect(self.auto_layout)
@@ -291,36 +431,20 @@ class MainWindow(QMainWindow):
         export_btn.clicked.connect(self.export_file)
         export_layout.addWidget(export_btn)
 
+        # 打印按钮
+        print_btn = QPushButton("打印")
+        print_btn.clicked.connect(self.print_layout)
+        print_btn.setStyleSheet("QPushButton { background-color: #4CAF50; color: white; font-weight: bold; }")
+        export_layout.addWidget(print_btn)
+
         # 添加弹性空间
         layout.addItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
-        
-    def create_status_bar(self):
-        """创建状态栏"""
-        self.status_bar = QStatusBar()
-        self.setStatusBar(self.status_bar)
-        self.status_bar.showMessage("就绪")
-        
-    def create_edit_area(self):
-        """创建编辑区域"""
-        layout = QHBoxLayout(self.edit_tab)
 
-        # 预览区域
-        preview_frame = QGroupBox("圆形预览")
-        preview_frame.setFixedWidth(280)
-        layout.addWidget(preview_frame)
-
-        preview_layout = QVBoxLayout(preview_frame)
-
-        # 预览标签
-        self.preview_label = QLabel()
-        self.preview_label.setFixedSize(250, 250)
-        self.preview_label.setAlignment(Qt.AlignCenter)
-        self.preview_label.setStyleSheet("border: 2px solid #ccc; background-color: white;")
-        preview_layout.addWidget(self.preview_label)
-
+    def create_edit_controls(self, parent_layout):
+        """创建编辑控制区域"""
         # 控制面板
         control_frame = QGroupBox("编辑控制")
-        layout.addWidget(control_frame)
+        parent_layout.addWidget(control_frame)
 
         control_layout = QVBoxLayout(control_frame)
 
@@ -365,6 +489,41 @@ class MainWindow(QMainWindow):
         self.offset_y_slider.valueChanged.connect(self.on_position_change)
         position_layout.addWidget(self.offset_y_slider)
 
+        # 数量控制
+        quantity_group = QGroupBox("数量设置")
+        control_layout.addWidget(quantity_group)
+
+        quantity_layout = QVBoxLayout(quantity_group)
+
+        # 数量标签和输入框
+        quantity_input_layout = QHBoxLayout()
+        quantity_input_layout.addWidget(QLabel("数量:"))
+
+        self.quantity_spinbox = QSpinBox()
+        self.quantity_spinbox.setRange(1, 50)  # 最多50个
+        self.quantity_spinbox.setValue(1)
+        self.quantity_spinbox.valueChanged.connect(self.on_quantity_change)
+        quantity_input_layout.addWidget(self.quantity_spinbox)
+
+        quantity_layout.addLayout(quantity_input_layout)
+
+        # 快速设置按钮
+        quick_btn_layout = QHBoxLayout()
+
+        btn_1 = QPushButton("1")
+        btn_1.clicked.connect(lambda: self.set_quantity(1))
+        quick_btn_layout.addWidget(btn_1)
+
+        btn_5 = QPushButton("5")
+        btn_5.clicked.connect(lambda: self.set_quantity(5))
+        quick_btn_layout.addWidget(btn_5)
+
+        btn_10 = QPushButton("10")
+        btn_10.clicked.connect(lambda: self.set_quantity(10))
+        quick_btn_layout.addWidget(btn_10)
+
+        quantity_layout.addLayout(quick_btn_layout)
+
         # 操作按钮
         btn_layout = QHBoxLayout()
 
@@ -378,140 +537,14 @@ class MainWindow(QMainWindow):
 
         control_layout.addLayout(btn_layout)
 
-        # 添加弹性空间
-        control_layout.addItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
-
         # 初始显示提示
         self.show_edit_hint()
-        
-    def create_layout_area(self):
-        """创建A4排版预览区域"""
-        layout = QHBoxLayout(self.layout_tab)
 
-        # 预览区域
-        preview_frame = QGroupBox("A4排版预览")
-        layout.addWidget(preview_frame)
-
-        preview_layout = QVBoxLayout(preview_frame)
-
-        # 信息栏
-        info_layout = QHBoxLayout()
-
-        title_label = QLabel("A4排版预览")
-        title_label.setStyleSheet("font-weight: bold; font-size: 12px;")
-        info_layout.addWidget(title_label)
-
-        info_layout.addItem(QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum))
-
-        # 布局信息标签
-        self.layout_info_label = QLabel("")
-        self.layout_info_label.setStyleSheet("color: #666; font-size: 10px;")
-        info_layout.addWidget(self.layout_info_label)
-
-        preview_layout.addLayout(info_layout)
-
-        # 滚动区域
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        preview_layout.addWidget(scroll_area)
-
-        # 预览标签
-        self.layout_preview_label = QLabel()
-        self.layout_preview_label.setAlignment(Qt.AlignCenter)
-        self.layout_preview_label.setStyleSheet("border: 1px solid #ccc; background-color: white;")
-        scroll_area.setWidget(self.layout_preview_label)
-
-        # 控制面板
-        control_frame = QGroupBox("排版控制")
-        control_frame.setFixedWidth(200)
-        layout.addWidget(control_frame)
-
-        control_layout = QVBoxLayout(control_frame)
-
-        # 布局模式
-        layout_mode_group = QGroupBox("排列模式")
-        control_layout.addWidget(layout_mode_group)
-
-        layout_mode_layout = QVBoxLayout(layout_mode_group)
-
-        self.layout_mode_group = QButtonGroup()
-
-        grid_radio2 = QRadioButton("网格排列")
-        grid_radio2.setChecked(True)
-        grid_radio2.toggled.connect(lambda: self.set_layout_mode("grid") if grid_radio2.isChecked() else None)
-        self.layout_mode_group.addButton(grid_radio2)
-        layout_mode_layout.addWidget(grid_radio2)
-
-        compact_radio2 = QRadioButton("紧密排列")
-        compact_radio2.toggled.connect(lambda: self.set_layout_mode("compact") if compact_radio2.isChecked() else None)
-        self.layout_mode_group.addButton(compact_radio2)
-        layout_mode_layout.addWidget(compact_radio2)
-
-        # 间距控制
-        spacing_group = QGroupBox("间距设置")
-        control_layout.addWidget(spacing_group)
-
-        spacing_layout = QVBoxLayout(spacing_group)
-
-        self.spacing_label2 = QLabel(f"间距: {self.spacing_value}mm")
-        spacing_layout.addWidget(self.spacing_label2)
-
-        self.spacing_slider2 = QSlider(Qt.Horizontal)
-        self.spacing_slider2.setRange(0, 20)
-        self.spacing_slider2.setValue(int(self.spacing_value))
-        self.spacing_slider2.valueChanged.connect(self.on_spacing_change2)
-        spacing_layout.addWidget(self.spacing_slider2)
-
-        # 页边距控制
-        margin_group = QGroupBox("页边距")
-        control_layout.addWidget(margin_group)
-
-        margin_layout = QVBoxLayout(margin_group)
-
-        self.margin_label = QLabel(f"边距: {self.margin_value}mm")
-        margin_layout.addWidget(self.margin_label)
-
-        self.margin_slider = QSlider(Qt.Horizontal)
-        self.margin_slider.setRange(5, 30)
-        self.margin_slider.setValue(int(self.margin_value))
-        self.margin_slider.valueChanged.connect(self.on_margin_change)
-        margin_layout.addWidget(self.margin_slider)
-
-        # 预览缩放控制
-        preview_group = QGroupBox("预览缩放")
-        control_layout.addWidget(preview_group)
-
-        preview_layout_inner = QVBoxLayout(preview_group)
-
-        self.preview_scale_label = QLabel(f"缩放: {int(self.preview_scale_value * 100)}%")
-        preview_layout_inner.addWidget(self.preview_scale_label)
-
-        self.preview_scale_slider = QSlider(Qt.Horizontal)
-        self.preview_scale_slider.setRange(20, 100)  # 20% 到 100%
-        self.preview_scale_slider.setValue(int(self.preview_scale_value * 100))
-        self.preview_scale_slider.valueChanged.connect(self.on_preview_scale_change)
-        preview_layout_inner.addWidget(self.preview_scale_slider)
-
-        # 操作按钮
-        btn_layout = QVBoxLayout()
-
-        refresh_btn = QPushButton("刷新预览")
-        refresh_btn.clicked.connect(self.update_layout_preview)
-        btn_layout.addWidget(refresh_btn)
-
-        auto_layout_btn2 = QPushButton("自动排版")
-        auto_layout_btn2.clicked.connect(self.auto_layout)
-        btn_layout.addWidget(auto_layout_btn2)
-
-        control_layout.addLayout(btn_layout)
-
-        # 添加弹性空间
-        control_layout.addItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
-
-        # 初始显示提示
-        self.show_layout_hint()
+    def create_status_bar(self):
+        """创建状态栏"""
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self.status_bar.showMessage("就绪")
         
     # 事件处理方法
     def import_images(self):
@@ -545,9 +578,8 @@ class MainWindow(QMainWindow):
                     image_item = ImageItem(file_path)
                     self.image_items.append(image_item)
 
-                    # 添加到界面列表
-                    display_text = f"{image_item.get_display_name()} ({image_item.get_size_text()}) [×{image_item.quantity}]"
-                    self.image_listbox.addItem(display_text)
+                    # 添加到界面列表（带缩略图）
+                    self.add_image_item_to_list(image_item)
 
                     added_count += 1
 
@@ -753,12 +785,11 @@ class MainWindow(QMainWindow):
         """设置布局模式"""
         self.layout_mode = mode
         self.status_bar.showMessage(f"布局模式: {'网格排列' if mode == 'grid' else '紧密排列'}")
-        
-    def on_spacing_change(self, value):
-        """间距改变事件"""
-        self.spacing_value = value
-        self.status_bar.showMessage(f"间距设置: {value}mm")
-        
+
+        # 更新布局预览
+        self.layout_preview_timer.stop()
+        self.layout_preview_timer.start(self.layout_debounce_delay)
+
     def load_image_editor(self):
         """加载图片编辑器"""
         if self.current_selection:
@@ -806,16 +837,19 @@ class MainWindow(QMainWindow):
             self.show_edit_hint()
 
     def on_scale_change(self, value):
-        """缩放改变事件"""
+        """缩放改变事件（带防抖）"""
         if self.current_editor:
             scale = value / 100.0  # 转换为0.1-3.0范围
             self.scale_value = scale
             self.scale_label.setText(f"缩放: {scale:.1f}")
             self.current_editor.set_scale(scale)
-            self.update_edit_preview()
+
+            # 使用防抖定时器延迟更新预览
+            self.edit_preview_timer.stop()
+            self.edit_preview_timer.start(self.debounce_delay)
 
     def on_position_change(self):
-        """位置改变事件"""
+        """位置改变事件（带防抖）"""
         if self.current_editor:
             offset_x = self.offset_x_slider.value()
             offset_y = self.offset_y_slider.value()
@@ -827,7 +861,10 @@ class MainWindow(QMainWindow):
             self.offset_y_label.setText(f"Y偏移: {offset_y}")
 
             self.current_editor.set_offset(offset_x, offset_y)
-            self.update_edit_preview()
+
+            # 使用防抖定时器延迟更新预览
+            self.edit_preview_timer.stop()
+            self.edit_preview_timer.start(self.debounce_delay)
 
     def reset_edit(self):
         """重置编辑参数"""
@@ -863,30 +900,38 @@ class MainWindow(QMainWindow):
 
     def show_layout_hint(self):
         """显示排版提示"""
-        self.layout_preview_label.setText("导入图片后\n自动显示排版预览\n\n可使用滚动条\n查看完整A4页面")
+        self.layout_preview_label.setText("导入图片后\n自动显示排版预览\n\n支持鼠标滚轮缩放\n支持拖动平移")
         self.layout_preview_label.setStyleSheet("border: 1px solid #ccc; background-color: #f5f5f5; color: #666;")
         self.layout_info_label.setText("")
 
-    def on_spacing_change2(self, value):
-        """A4预览区间距改变事件"""
+    def on_spacing_change(self, value):
+        """间距改变事件（带防抖）"""
         self.spacing_value = value
-        self.spacing_label2.setText(f"间距: {value}mm")
-        # 同步主设置区的滑块
-        self.spacing_slider.setValue(value)
-        self.update_layout_preview()
+        self.spacing_label.setText(f"间距: {value}mm")
+        self.status_bar.showMessage(f"间距设置: {value}mm")
+
+        # 使用防抖定时器延迟更新布局预览
+        self.layout_preview_timer.stop()
+        self.layout_preview_timer.start(self.debounce_delay)
 
     def on_margin_change(self, value):
-        """页边距改变事件"""
+        """页边距改变事件（带防抖）"""
         self.margin_value = value
         self.margin_label.setText(f"边距: {value}mm")
-        self.update_layout_preview()
+
+        # 使用防抖定时器延迟更新布局预览
+        self.layout_preview_timer.stop()
+        self.layout_preview_timer.start(self.debounce_delay)
 
     def on_preview_scale_change(self, value):
-        """预览缩放改变事件"""
+        """预览缩放改变事件（带防抖）"""
         scale = value / 100.0
         self.preview_scale_value = scale
         self.preview_scale_label.setText(f"缩放: {value}%")
-        self.update_layout_preview()
+
+        # 使用防抖定时器延迟更新布局预览
+        self.layout_preview_timer.stop()
+        self.layout_preview_timer.start(self.debounce_delay)
 
     def get_expanded_image_list(self):
         """获取展开后的图片列表（根据数量复制）"""
@@ -917,12 +962,8 @@ class MainWindow(QMainWindow):
                 preview_scale=self.preview_scale_value
             )
 
-            # 更新预览显示
-            self.layout_preview_label.setPixmap(preview_pixmap)
-            self.layout_preview_label.setStyleSheet("border: 1px solid #ccc; background-color: white;")
-
-            # 调整标签大小以适应图片
-            self.layout_preview_label.resize(preview_pixmap.size())
+            # 更新预览显示（使用交互式组件）
+            self.interactive_scroll_area.set_pixmap(preview_pixmap)
 
             # 更新布局信息
             layout_info = self.layout_engine.get_layout_info(layout_type, spacing_mm, margin_mm)
@@ -973,12 +1014,17 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "错误", f"自动排版失败：{str(e)}")
 
     def on_quantity_change(self, value):
-        """数量改变事件"""
+        """数量改变事件（带防抖）"""
         if self.current_selection:
             self.current_selection.quantity = value
-            self.update_image_list_display()
-            self.update_layout_preview()
             self.status_bar.showMessage(f"已设置数量: {value}")
+
+            # 立即更新列表显示（轻量级操作）
+            self.update_current_item_display()
+
+            # 使用较长延迟更新布局预览（重量级操作）
+            self.layout_preview_timer.stop()
+            self.layout_preview_timer.start(self.layout_debounce_delay)
 
     def set_quantity(self, quantity):
         """设置数量"""
@@ -991,6 +1037,32 @@ class MainWindow(QMainWindow):
         else:
             QMessageBox.warning(self, "提示", "请先选择一张图片")
 
+    def add_image_item_to_list(self, image_item):
+        """添加图片项到列表（带缩略图）"""
+        try:
+            # 创建缩略图
+            thumbnail = image_item.create_thumbnail((48, 48))
+
+            # 创建显示文本
+            display_text = f"{image_item.get_display_name()}\n({image_item.get_size_text()}) [×{image_item.quantity}]"
+
+            # 创建列表项
+            list_item = QListWidgetItem()
+            list_item.setText(display_text)
+
+            # 设置图标（缩略图）
+            if thumbnail:
+                list_item.setIcon(QIcon(thumbnail))
+
+            # 添加到列表
+            self.image_listbox.addItem(list_item)
+
+        except Exception as e:
+            print(f"添加图片项到列表失败: {e}")
+            # 降级处理：只添加文本
+            display_text = f"{image_item.get_display_name()} ({image_item.get_size_text()}) [×{image_item.quantity}]"
+            self.image_listbox.addItem(display_text)
+
     def update_image_list_display(self):
         """更新图片列表显示"""
         current_row = self.image_listbox.currentRow()
@@ -998,12 +1070,324 @@ class MainWindow(QMainWindow):
         # 重新构建列表显示
         self.image_listbox.clear()
         for image_item in self.image_items:
-            display_text = f"{image_item.get_display_name()} ({image_item.get_size_text()}) [×{image_item.quantity}]"
-            self.image_listbox.addItem(display_text)
+            self.add_image_item_to_list(image_item)
 
         # 恢复选择
         if current_row >= 0 and current_row < len(self.image_items):
             self.image_listbox.setCurrentRow(current_row)
+
+    def delayed_update_edit_preview(self):
+        """延迟更新编辑预览（防抖）"""
+        try:
+            self.update_edit_preview()
+        except Exception as e:
+            print(f"延迟更新编辑预览失败: {e}")
+
+    def delayed_update_layout_preview(self):
+        """延迟更新布局预览（防抖）"""
+        try:
+            self.update_layout_preview()
+        except Exception as e:
+            print(f"延迟更新布局预览失败: {e}")
+
+    def delayed_update_image_list(self):
+        """延迟更新图片列表（防抖）"""
+        try:
+            self.update_image_list_display()
+        except Exception as e:
+            print(f"延迟更新图片列表失败: {e}")
+
+    def update_current_item_display(self):
+        """更新当前选中项的显示（轻量级操作）"""
+        try:
+            current_row = self.image_listbox.currentRow()
+            if current_row >= 0 and current_row < len(self.image_items):
+                image_item = self.image_items[current_row]
+
+                # 更新当前项的文本
+                display_text = f"{image_item.get_display_name()}\n({image_item.get_size_text()}) [×{image_item.quantity}]"
+                current_item = self.image_listbox.item(current_row)
+                if current_item:
+                    current_item.setText(display_text)
+        except Exception as e:
+            print(f"更新当前项显示失败: {e}")
+
+    def fit_preview_to_window(self):
+        """适应窗口显示预览"""
+        try:
+            self.interactive_scroll_area.fit_to_window()
+            self.status_bar.showMessage("预览已适应窗口大小")
+        except Exception as e:
+            print(f"适应窗口失败: {e}")
+
+    def reset_preview_view(self):
+        """重置预览视图"""
+        try:
+            self.interactive_scroll_area.reset_view()
+            self.status_bar.showMessage("预览视图已重置")
+        except Exception as e:
+            print(f"重置视图失败: {e}")
+
+    def on_diameter_change(self, value):
+        """圆形直径改变事件"""
+        app_config.badge_diameter_mm = value
+        self.status_bar.showMessage(f"圆形直径已设置为: {value}mm")
+
+    def set_diameter(self, diameter):
+        """设置圆形直径"""
+        self.diameter_spinbox.setValue(diameter)
+        app_config.badge_diameter_mm = diameter
+        self.status_bar.showMessage(f"圆形直径已设置为: {diameter}mm")
+
+    def on_config_changed(self, key, old_value, new_value):
+        """配置变化事件"""
+        if key == 'badge_diameter_mm':
+            # 重新创建所有编辑器和预览
+            self.current_editor = None
+
+            # 如果有选中的图片，重新加载编辑器
+            if self.current_selection:
+                self.load_image_editor()
+
+            # 延迟更新布局预览
+            self.layout_preview_timer.stop()
+            self.layout_preview_timer.start(self.layout_debounce_delay)
+
+    def print_layout(self):
+        """打印当前A4排版"""
+        try:
+            # 检查是否有图片可以打印
+            expanded_images = self.get_expanded_image_list()
+            if not expanded_images:
+                QMessageBox.warning(self, "打印失败", "没有图片可以打印，请先导入图片。")
+                return
+
+            # 导入打印相关模块
+            from PySide6.QtPrintSupport import QPrinter, QPrintDialog
+            from PySide6.QtGui import QPainter, QPageSize, QPageLayout
+            from PySide6.QtCore import QMarginsF
+
+            # 创建页面布局（参考文章的最佳实践）
+            page_layout = QPageLayout()
+            # 设置A4纸张
+            page_layout.setPageSize(QPageSize(QPageSize.A4))
+            # 设置纵向
+            page_layout.setOrientation(QPageLayout.Orientation.Portrait)
+            # 设置页边距（转换为点，因为setMargins只接受点单位）
+            margin_mm = self.margin_value
+            margin_points = margin_mm * 2.83465  # 1mm ≈ 2.83465点
+            page_layout.setMargins(QMarginsF(margin_points, margin_points, margin_points, margin_points))
+
+            # 创建打印机对象
+            printer = QPrinter(QPrinter.HighResolution)
+            printer.setPageLayout(page_layout)
+
+            # 显示打印对话框
+            print_dialog = QPrintDialog(printer, self)
+            print_dialog.setWindowTitle("打印A4排版")
+
+            if print_dialog.exec() == QPrintDialog.Accepted:
+                # 执行打印
+                self.status_bar.showMessage("正在打印...")
+
+                # 生成打印内容
+                success = self.render_to_printer(printer, expanded_images)
+
+                if success:
+                    self.status_bar.showMessage("打印完成")
+                    QMessageBox.information(self, "打印成功", "A4排版已发送到打印机！")
+                else:
+                    self.status_bar.showMessage("打印失败")
+                    QMessageBox.warning(self, "打印失败", "打印过程中发生错误。")
+            else:
+                self.status_bar.showMessage("打印已取消")
+
+        except ImportError:
+            QMessageBox.critical(
+                self,
+                "打印功能不可用",
+                "打印功能需要Qt打印支持模块，请确保已正确安装PySide6。"
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "打印错误", f"打印时发生错误：{str(e)}")
+            self.status_bar.showMessage("打印失败")
+
+    def print_preview(self):
+        """打印预览"""
+        try:
+            # 检查是否有图片可以预览
+            expanded_images = self.get_expanded_image_list()
+            if not expanded_images:
+                QMessageBox.warning(self, "预览失败", "没有图片可以预览，请先导入图片。")
+                return
+
+            # 导入打印预览相关模块
+            from PySide6.QtPrintSupport import QPrinter, QPrintPreviewDialog
+            from PySide6.QtGui import QPageSize, QPageLayout
+            from PySide6.QtCore import QMarginsF, Qt
+
+            # 创建页面布局（参考文章的最佳实践）
+            page_layout = QPageLayout()
+            # 设置A4纸张
+            page_layout.setPageSize(QPageSize(QPageSize.A4))
+            # 设置纵向
+            page_layout.setOrientation(QPageLayout.Orientation.Portrait)
+            # 设置页边距（转换为点）
+            margin_mm = self.margin_value
+            margin_points = margin_mm * 2.83465  # 1mm ≈ 2.83465点
+            page_layout.setMargins(QMarginsF(margin_points, margin_points, margin_points, margin_points))
+
+            # 创建打印预览对话框（不指定打印机，让对话框自己创建）
+            preview_dialog = QPrintPreviewDialog(self)
+            preview_dialog.printer().setPageLayout(page_layout)  # 设置预览打印机的页面布局
+            preview_dialog.setWindowTitle("打印预览 - A4排版")
+
+            # 连接预览信号（参考文章的标准方式，使用lambda确保预览内容正确显示）
+            preview_dialog.paintRequested.connect(lambda: self.render_to_printer(preview_dialog.printer(), expanded_images))
+
+            # 打印预览窗口最大化（参考文章建议）
+            preview_dialog.setWindowState(Qt.WindowMaximized)
+
+            # 显示预览对话框
+            preview_dialog.exec()
+
+        except ImportError:
+            QMessageBox.critical(
+                self,
+                "打印预览不可用",
+                "打印预览功能需要Qt打印支持模块，请确保已正确安装PySide6。"
+            )
+        except Exception as e:
+            QMessageBox.critical(self, "预览错误", f"打印预览时发生错误：{str(e)}")
+
+    def _pil_to_qpixmap(self, pil_image):
+        """将PIL图片转换为QPixmap"""
+        try:
+            from PySide6.QtGui import QPixmap
+            from io import BytesIO
+            from PIL import Image
+
+            # 将PIL图片保存到字节流
+            buffer = BytesIO()
+            # 如果是RGBA模式，转换为RGB
+            if pil_image.mode == 'RGBA':
+                # 创建白色背景
+                background = Image.new('RGB', pil_image.size, (255, 255, 255))
+                background.paste(pil_image, mask=pil_image.split()[-1])  # 使用alpha通道作为遮罩
+                pil_image = background
+
+            pil_image.save(buffer, format='PNG')
+            buffer.seek(0)
+
+            # 从字节流创建QPixmap
+            pixmap = QPixmap()
+            pixmap.loadFromData(buffer.getvalue())
+            return pixmap
+
+        except Exception as e:
+            print(f"PIL到QPixmap转换失败: {e}")
+            # 返回空白pixmap
+            from PySide6.QtGui import QPixmap
+            blank_pixmap = QPixmap(100, 100)
+            blank_pixmap.fill()
+            return blank_pixmap
+
+    def render_to_printer(self, printer, expanded_images):
+        """将A4排版渲染到打印机（参考文章的标准做法）"""
+        try:
+            from PySide6.QtGui import QPainter
+            from PySide6.QtCore import QRect
+            from PySide6.QtPrintSupport import QPrinter
+
+            # 创建画家对象（参考文章的标准方式）
+            painter = QPainter(printer)
+            if not painter.isActive():
+                print("QPainter初始化失败")
+                return False
+
+            # 获取当前布局设置
+            layout_type = self.layout_mode
+            spacing_mm = self.spacing_value
+            margin_mm = self.margin_value
+
+            # 使用布局引擎计算位置
+            if layout_type == "grid":
+                layout_result = self.layout_engine.calculate_grid_layout(spacing_mm, margin_mm)
+            else:
+                layout_result = self.layout_engine.calculate_compact_layout(spacing_mm, margin_mm)
+
+            positions = layout_result['positions']
+
+            # 修复缩放计算 - 使用页面尺寸比例而不是DPI
+            # 获取打印页面尺寸（点）
+            page_rect = printer.pageRect(QPrinter.Point)
+            print_width = page_rect.width()
+            print_height = page_rect.height()
+
+            # 获取屏幕A4尺寸（像素）
+            a4_width_px = self.layout_engine.a4_width_px
+            a4_height_px = self.layout_engine.a4_height_px
+
+            # 计算缩放比例（从屏幕像素到打印点）
+            scale_x = print_width / a4_width_px
+            scale_y = print_height / a4_height_px
+            scale = min(scale_x, scale_y)  # 保持比例，使用较小的缩放
+
+            # 计算圆形在打印页面上的直径
+            circle_diameter_print = self.layout_engine.badge_diameter_px * scale
+
+            print(f"调试信息: 页面尺寸={print_width:.1f}×{print_height:.1f}点, 屏幕A4={a4_width_px}×{a4_height_px}px")
+            print(f"调试信息: 缩放比例={scale:.3f}, 圆形直径={circle_diameter_print:.1f}点")
+
+            # 渲染每个图片
+            for i, (x, y) in enumerate(positions):
+                if i >= len(expanded_images):
+                    break
+
+                image_item = expanded_images[i]
+
+                # 获取处理后的圆形图片
+                circle_pil_image = self.image_processor.create_circular_crop(
+                    image_item.file_path,
+                    image_item.scale,
+                    image_item.offset_x,
+                    image_item.offset_y
+                )
+
+                # 将PIL图片转换为QPixmap
+                circle_pixmap = self._pil_to_qpixmap(circle_pil_image)
+
+                if circle_pixmap and not circle_pixmap.isNull():
+                    # 修复位置计算 - 圆心位置转换为左上角位置
+                    # x, y 是圆心坐标，需要转换为左上角坐标
+                    print_center_x = x * scale
+                    print_center_y = y * scale
+
+                    # 计算左上角位置
+                    print_x = print_center_x - circle_diameter_print / 2
+                    print_y = print_center_y - circle_diameter_print / 2
+
+                    # 创建目标矩形
+                    target_rect = QRect(
+                        int(print_x),
+                        int(print_y),
+                        int(circle_diameter_print),
+                        int(circle_diameter_print)
+                    )
+
+                    # 绘制圆形图片
+                    painter.drawPixmap(target_rect, circle_pixmap)
+
+                    print(f"绘制圆形 {i+1}: 中心({print_center_x:.1f}, {print_center_y:.1f}), 左上角({print_x:.1f}, {print_y:.1f}), 直径={circle_diameter_print:.1f}")
+
+            painter.end()
+            return True
+
+        except Exception as e:
+            print(f"渲染到打印机失败: {e}")
+            if painter.isActive():
+                painter.end()
+            return False
 
     def show_about(self):
         """显示关于对话框"""

@@ -9,7 +9,7 @@ APP_VERSION = "1.0.0"
 APP_TITLE = "徽章图案工具"
 
 # 尺寸配置（单位：mm）
-BADGE_DIAMETER_MM = 68  # 徽章直径
+DEFAULT_BADGE_DIAMETER_MM = 68  # 默认徽章直径
 A4_WIDTH_MM = 210      # A4纸宽度
 A4_HEIGHT_MM = 297     # A4纸高度
 
@@ -22,13 +22,69 @@ def mm_to_pixels(mm, dpi=PRINT_DPI):
     """将毫米转换为像素"""
     return int(mm * dpi / 25.4)
 
-# 计算关键尺寸
-BADGE_DIAMETER_PX = mm_to_pixels(BADGE_DIAMETER_MM)  # 徽章直径像素
+# 固定尺寸
 A4_WIDTH_PX = mm_to_pixels(A4_WIDTH_MM)             # A4宽度像素
 A4_HEIGHT_PX = mm_to_pixels(A4_HEIGHT_MM)           # A4高度像素
 
+# 动态配置管理类
+class AppConfig:
+    """应用程序配置管理"""
+
+    def __init__(self):
+        self._badge_diameter_mm = DEFAULT_BADGE_DIAMETER_MM
+        self._listeners = []  # 配置变化监听器
+
+    @property
+    def badge_diameter_mm(self):
+        """徽章直径（毫米）"""
+        return self._badge_diameter_mm
+
+    @badge_diameter_mm.setter
+    def badge_diameter_mm(self, value):
+        """设置徽章直径"""
+        # 限制范围10-100mm
+        value = max(10, min(100, value))
+        if value != self._badge_diameter_mm:
+            old_value = self._badge_diameter_mm
+            self._badge_diameter_mm = value
+            self._notify_listeners('badge_diameter_mm', old_value, value)
+
+    @property
+    def badge_diameter_px(self):
+        """徽章直径（像素）"""
+        return mm_to_pixels(self._badge_diameter_mm)
+
+    @property
+    def badge_radius_px(self):
+        """徽章半径（像素）"""
+        return self.badge_diameter_px // 2
+
+    def add_listener(self, callback):
+        """添加配置变化监听器"""
+        self._listeners.append(callback)
+
+    def remove_listener(self, callback):
+        """移除配置变化监听器"""
+        if callback in self._listeners:
+            self._listeners.remove(callback)
+
+    def _notify_listeners(self, key, old_value, new_value):
+        """通知监听器配置已变化"""
+        for callback in self._listeners:
+            try:
+                callback(key, old_value, new_value)
+            except Exception as e:
+                print(f"配置监听器错误: {e}")
+
+# 全局配置实例
+app_config = AppConfig()
+
+# 向后兼容的常量
+BADGE_DIAMETER_MM = app_config.badge_diameter_mm
+BADGE_DIAMETER_PX = app_config.badge_diameter_px
+
 # 界面配置
-WINDOW_WIDTH = 1200    # 主窗口宽度
+WINDOW_WIDTH = 1420    # 主窗口宽度（调整以适应列宽）
 WINDOW_HEIGHT = 800    # 主窗口高度
 THUMBNAIL_SIZE = 100   # 缩略图大小
 

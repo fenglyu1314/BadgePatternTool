@@ -159,8 +159,11 @@ class ExportManager:
                     paste_x = center_x - self.layout_engine.badge_radius_px
                     paste_y = center_y - self.layout_engine.badge_radius_px
                     
-                    # 粘贴到画布
-                    canvas_img.paste(circle_img, (paste_x, paste_y))
+                    # 粘贴到画布（使用透明度遮罩）
+                    if circle_img.mode == 'RGBA':
+                        canvas_img.paste(circle_img, (paste_x, paste_y), circle_img)
+                    else:
+                        canvas_img.paste(circle_img, (paste_x, paste_y))
                     
                     processed_count += 1
                     

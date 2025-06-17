@@ -57,15 +57,19 @@ class MainWindow(QMainWindow):
         """设置窗口基本属性"""
         self.setWindowTitle(f"{APP_TITLE} v{APP_VERSION}")
         self.setGeometry(100, 100, WINDOW_WIDTH, WINDOW_HEIGHT)
-        
+
         # 设置窗口居中
         screen = self.screen().availableGeometry()
         x = (screen.width() - WINDOW_WIDTH) // 2
         y = (screen.height() - WINDOW_HEIGHT) // 2
         self.move(x, y)
-        
-        # 设置最小窗口大小
-        self.setMinimumSize(800, 600)
+
+        # 设置固定窗口大小（不可调整）
+        self.setFixedSize(WINDOW_WIDTH, WINDOW_HEIGHT)
+
+        # 设置窗口标志：禁用最大化按钮，保留最小化和关闭按钮
+        flags = Qt.Window | Qt.WindowMinimizeButtonHint | Qt.WindowCloseButtonHint | Qt.WindowTitleHint
+        self.setWindowFlags(flags)
         
     def create_menu(self):
         """创建菜单栏"""

@@ -19,8 +19,16 @@ class LayoutEngine:
     def __init__(self):
         self.a4_width_px = A4_WIDTH_PX
         self.a4_height_px = A4_HEIGHT_PX
-        self.badge_diameter_px = BADGE_DIAMETER_PX
-        self.badge_radius_px = self.badge_diameter_px // 2
+
+    @property
+    def badge_diameter_px(self):
+        """获取当前圆形直径（像素）"""
+        return app_config.badge_diameter_px
+
+    @property
+    def badge_radius_px(self):
+        """获取当前圆形半径（像素）"""
+        return app_config.badge_radius_px
         
     def calculate_grid_layout(self, spacing_mm=DEFAULT_SPACING, margin_mm=DEFAULT_MARGIN):
         """
@@ -75,7 +83,8 @@ class LayoutEngine:
     
     def calculate_compact_layout(self, spacing_mm=DEFAULT_SPACING, margin_mm=DEFAULT_MARGIN):
         """
-        计算紧密排列布局（六边形密排）
+        计算紧密排列布局（六边形蜂巢密排）
+        优化算法：实现4-3-4模式的紧凑排列，最大化利用A4空间
         参数:
             spacing_mm: 圆形间距（毫米）
             margin_mm: 页边距（毫米）
@@ -91,62 +100,121 @@ class LayoutEngine:
         available_width = self.a4_width_px - 2 * margin_px
         available_height = self.a4_height_px - 2 * margin_px
 
-        # 六边形密排的参数计算
-        # 使用与网格排版相同的间距计算方式，确保两种排版的实际间距一致
-        # 圆心之间的基础距离（圆形直径 + 用户设定的间距）
-        base_center_distance = self.badge_diameter_px + spacing_px
-
-        # 在六边形密排中，由于对角相邻圆形的距离会小于水平距离
-        # 需要增加安全系数来确保对角方向也满足间距要求
-        # 经过测试，1.12的安全系数可以确保所有方向的间距都不小于用户设定值
-        center_distance = base_center_distance * 1.12
-
-        # 行间距：六边形密排中，行间距 = 圆心距离 * √3/2
-        row_offset_y = center_distance * math.sqrt(3) / 2
-
-        # 列偏移：奇数行偏移半个圆心距离
-        col_offset_x = center_distance / 2
-
         positions = []
-        row = 0
-        y = margin_px + self.badge_radius_px
 
-        while y + self.badge_radius_px <= self.a4_height_px - margin_px:
-            # 计算当前行的列偏移
-            if row % 2 == 0:  # 偶数行
-                current_col_offset = 0
-            else:  # 奇数行
-                current_col_offset = col_offset_x
+        # 优化的紧凑排列算法
+        # 目标：实现4-3-4模式，最大化利用空间
 
-            # 计算当前行可放置的圆形数量
-            available_row_width = available_width - current_col_offset
-            cols_in_row = max(0, int(available_row_width // center_distance))
+        # 圆心之间的最小距离（圆形直径 + 用户设定的间距）
+        min_center_distance = self.badge_diameter_px + spacing_px
 
-            if cols_in_row > 0:
-                # 计算起始X位置（居中）
-                total_row_width = cols_in_row * center_distance
-                start_x = margin_px + current_col_offset + (available_row_width - total_row_width) / 2
+        # 第一步：计算可以放置的列数
+        # 使用更保守的计算方式，确保所有列都能放下
+        max_cols = 1
 
-                # 添加当前行的所有位置
-                for col in range(cols_in_row):
-                    x = start_x + col * center_distance + self.badge_radius_px
-                    # 检查是否在边界内
-                    if (x - self.badge_radius_px >= margin_px and
-                        x + self.badge_radius_px <= self.a4_width_px - margin_px):
-                        positions.append((int(x), int(y)))
+        # 逐步增加列数，直到无法放下为止
+        for test_cols in range(1, 5):  # 最多测试4列
+            # 计算这个列数需要的总宽度
+            if test_cols == 1:
+                total_width_needed = self.badge_diameter_px
+            else:
+                # 计算实际可用的水平空间（减去圆形直径）
+                available_for_spacing = available_width - test_cols * self.badge_diameter_px
+                if available_for_spacing < 0:
+                    break  # 空间不足
 
-            # 移动到下一行
-            row += 1
-            y += row_offset_y
+                # 计算间距（列间距数量 = 列数 - 1）
+                actual_spacing = available_for_spacing / (test_cols - 1)
+
+                # 放宽间距要求：允许更小的间距，但不能为负数
+                min_required_spacing = max(0, spacing_px * 0.5)  # 允许间距减半
+                if actual_spacing < min_required_spacing:
+                    break  # 间距太小
+
+                total_width_needed = test_cols * self.badge_diameter_px + (test_cols - 1) * actual_spacing
+
+            # 检查是否能放下
+            if total_width_needed <= available_width:
+                max_cols = test_cols
+            else:
+                break
+
+        # 第二步：使用六边形网格的理论间距
+        # 六边形网格的水平间距 = 圆形直径 * √3/2 + 用户间距
+        hex_horizontal_factor = math.sqrt(3) / 2  # ≈ 0.866
+        theoretical_hex_spacing = self.badge_diameter_px * hex_horizontal_factor + spacing_px
+
+        # 重新计算可以放置的列数（基于六边形间距）
+        max_cols_hex = int((available_width + theoretical_hex_spacing) // theoretical_hex_spacing)
+        max_cols_hex = max(1, max_cols_hex)
+
+        # 检查六边形间距是否可行
+        if max_cols_hex > max_cols:
+            # 六边形间距可以放下更多列，使用六边形间距
+            max_cols = max_cols_hex
+            horizontal_spacing = theoretical_hex_spacing
+
+            # 计算起始位置（从左边距开始）
+            start_x = margin_px + self.badge_radius_px
+        else:
+            # 使用原来的均匀分布方式
+            if max_cols == 1:
+                horizontal_spacing = min_center_distance
+                start_x = margin_px + available_width / 2  # 居中
+            else:
+                # 计算实际可用的水平空间（减去圆形直径）
+                available_for_spacing = available_width - max_cols * self.badge_diameter_px
+                # 计算间距（列间距数量 = 列数 - 1）
+                actual_spacing = available_for_spacing / (max_cols - 1)
+                # 水平间距 = 圆形直径 + 实际间距（这是圆心之间的距离）
+                horizontal_spacing = self.badge_diameter_px + actual_spacing
+                # 起始X位置（第一个圆的圆心）
+                start_x = margin_px + self.badge_radius_px
+
+        # 第三步：计算垂直间距
+        # 六边形网格的垂直间距 = 水平间距 * √3/2
+        theoretical_vertical = horizontal_spacing * math.sqrt(3) / 2
+        # 使用理论值和最小距离的较大者，确保不重叠
+        vertical_spacing = max(theoretical_vertical, min_center_distance)
+
+        # 中间列的垂直偏移
+        middle_col_offset = vertical_spacing / 2
+
+        # 第四步：为每一列计算位置
+        for col in range(max_cols):
+            if max_cols == 1:
+                x = start_x
+            else:
+                x = start_x + col * horizontal_spacing
+
+            # 边界检查
+            if (x - self.badge_radius_px < margin_px or
+                x + self.badge_radius_px > self.a4_width_px - margin_px):
+                continue
+
+            # 计算当前列的Y起始位置
+            if col % 2 == 0:  # 偶数列（第0、2、4...列）
+                y_start = margin_px + self.badge_radius_px
+            else:  # 奇数列（第1、3、5...列）- 向下偏移
+                y_start = margin_px + self.badge_radius_px + middle_col_offset
+
+            # 在当前列中放置圆形
+            y = y_start
+            while y + self.badge_radius_px <= self.a4_height_px - margin_px:
+                positions.append((int(x), int(y)))
+                y += vertical_spacing
 
         return {
             'type': 'compact',
             'positions': positions,
             'max_count': len(positions),
-            'row_offset_y': row_offset_y,
-            'center_distance': center_distance,
+            'vertical_spacing': vertical_spacing,
+            'horizontal_spacing': horizontal_spacing,
+            'middle_col_offset': middle_col_offset,
+            'center_distance': min_center_distance,
             'spacing': spacing_px,
-            'margin': margin_px
+            'margin': margin_px,
+            'columns': max_cols
         }
     
     def create_layout_preview(self, image_items, layout_type='grid', spacing_mm=DEFAULT_SPACING,
