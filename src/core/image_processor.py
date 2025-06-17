@@ -3,15 +3,15 @@
 实现圆形裁剪、缩放、移动等图片处理功能
 """
 
-import math
-from PIL import Image, ImageDraw
 import sys
 import os
 from io import BytesIO
 
+from PIL import Image, ImageDraw
+
 # 添加父目录到路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.config import *
+from utils.config import app_config
 
 class ImageProcessor:
     """图片处理器类"""

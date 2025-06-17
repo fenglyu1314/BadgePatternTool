@@ -4,14 +4,18 @@ A4排版引擎模块
 """
 
 import math
-from PIL import Image, ImageDraw
 import sys
 import os
 from io import BytesIO
 
+from PIL import Image, ImageDraw
+
 # 添加父目录到路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.config import *
+from utils.config import (
+    A4_WIDTH_PX, A4_HEIGHT_PX, DEFAULT_SPACING, DEFAULT_MARGIN,
+    mm_to_pixels, app_config
+)
 
 class LayoutEngine:
     """A4排版引擎类"""
@@ -281,20 +285,20 @@ class LayoutEngine:
 
                 except Exception as e:
                     print(f"放置图片失败 {image_item.filename}: {e}")
-                    # 绘制占位圆形
+                    # 绘制占位圆形（实心）
                     center_x, center_y = positions[i]
                     draw.ellipse([
                         center_x - self.badge_radius_px, center_y - self.badge_radius_px,
                         center_x + self.badge_radius_px, center_y + self.badge_radius_px
-                    ], outline=(200, 200, 200), width=2)
+                    ], fill=(200, 200, 200), outline=(180, 180, 180), width=1)
 
-            # 绘制剩余位置的占位符
+            # 绘制剩余位置的占位符（实心）
             for i in range(len(image_items), len(positions)):
                 center_x, center_y = positions[i]
                 draw.ellipse([
                     center_x - self.badge_radius_px, center_y - self.badge_radius_px,
                     center_x + self.badge_radius_px, center_y + self.badge_radius_px
-                ], outline=(220, 220, 220), width=1)
+                ], fill=(220, 220, 220), outline=(200, 200, 200), width=1)
 
             # 缩放到预览大小
             preview_width = int(self.a4_width_px * preview_scale)

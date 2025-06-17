@@ -103,9 +103,10 @@ EXPORT_FORMATS = [
 ]
 
 # 默认设置
-DEFAULT_SPACING = 5     # 默认间距（mm）
-DEFAULT_MARGIN = 10     # 默认页边距（mm）
-DEFAULT_LAYOUT = "grid" # 默认布局模式：grid（网格）或 compact（紧密）
+DEFAULT_SPACING = 5        # 默认间距（mm）
+DEFAULT_MARGIN = 5         # 默认页边距（mm）
+DEFAULT_LAYOUT = "compact" # 默认布局模式：grid（网格）或 compact（紧密）
+DEFAULT_EXPORT_FORMAT = "PNG"  # 默认导出格式
 
 # 颜色配置
 COLORS = {

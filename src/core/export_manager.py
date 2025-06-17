@@ -4,16 +4,16 @@
 """
 
 import os
+import sys
 from datetime import datetime
+
 from PIL import Image
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import mm
-import sys
 
 # 添加父目录到路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.config import *
+from utils.config import DEFAULT_SPACING, DEFAULT_MARGIN, PRINT_DPI
 from core.layout_engine import LayoutEngine
 from core.image_processor import ImageProcessor
 
@@ -45,10 +45,7 @@ class ExportManager:
             
             # 创建PDF画布
             c = canvas.Canvas(output_path, pagesize=A4)
-            
-            # A4尺寸（points，1 point = 1/72 inch）
-            a4_width, a4_height = A4
-            
+
             # 转换比例（从像素到points）
             # 300 DPI: 1 inch = 300 pixels = 72 points
             pixel_to_point = 72.0 / PRINT_DPI
