@@ -280,7 +280,61 @@ class MainWindow(QMainWindow):
     # 事件处理方法
     def import_images(self):
         """导入图片"""
-        QMessageBox.information(self, "提示", "导入图片功能开发中...")
+        try:
+            # 选择图片文件
+            file_paths = self.file_handler.select_images(self)
+
+            if not file_paths:
+                return
+
+            # 检查图片数量限制
+            total_count = len(self.image_items) + len(file_paths)
+            if total_count > MAX_IMAGE_COUNT:
+                QMessageBox.warning(
+                    self,
+                    "数量限制",
+                    f"最多只能导入{MAX_IMAGE_COUNT}张图片，当前已有{len(self.image_items)}张"
+                )
+                return
+
+            # 添加图片到列表
+            added_count = 0
+            for file_path in file_paths:
+                try:
+                    # 检查是否已存在
+                    if any(item.file_path == file_path for item in self.image_items):
+                        continue
+
+                    # 创建图片项
+                    image_item = ImageItem(file_path)
+                    self.image_items.append(image_item)
+
+                    # 添加到界面列表
+                    display_text = f"{image_item.get_display_name()} ({image_item.get_size_text()})"
+                    self.image_listbox.addItem(display_text)
+
+                    added_count += 1
+
+                except Exception as e:
+                    print(f"添加图片失败 {file_path}: {e}")
+                    continue
+
+            # 更新状态
+            if added_count > 0:
+                self.status_bar.showMessage(f"成功导入 {added_count} 张图片，总计 {len(self.image_items)} 张")
+                # 选中最后一个添加的项
+                if self.image_items:
+                    last_index = len(self.image_items) - 1
+                    self.image_listbox.setCurrentRow(last_index)
+
+                # 更新A4排版预览
+                self.update_layout_preview()
+            else:
+                self.status_bar.showMessage("没有新图片被添加")
+
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"导入图片时发生错误：{str(e)}")
+            self.status_bar.showMessage("图片导入失败")
         
     def export_pdf(self):
         """导出PDF"""
@@ -302,21 +356,40 @@ class MainWindow(QMainWindow):
     def clear_all(self):
         """清空列表"""
         if self.image_items:
-            reply = QMessageBox.question(self, "确认", "确定要清空所有图片吗？")
+            reply = QMessageBox.question(
+                self,
+                "确认",
+                "确定要清空所有图片吗？",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
             if reply == QMessageBox.Yes:
                 self.image_items.clear()
                 self.image_listbox.clear()
                 self.current_selection = None
+                self.current_editor = None
                 self.status_bar.showMessage("已清空图片列表")
         
     def delete_selected(self):
         """删除选中项"""
         current_row = self.image_listbox.currentRow()
-        if current_row >= 0:
+        if current_row >= 0 and current_row < len(self.image_items):
+            # 删除数据
+            deleted_item = self.image_items.pop(current_row)
+            # 删除界面项
             self.image_listbox.takeItem(current_row)
-            if current_row < len(self.image_items):
-                deleted_item = self.image_items.pop(current_row)
-                self.status_bar.showMessage(f"已删除: {deleted_item.get_display_name()}")
+            # 清除选择
+            self.current_selection = None
+            self.current_editor = None
+            self.status_bar.showMessage(f"已删除: {deleted_item.get_display_name()}")
+
+            # 如果还有项目，选中相邻的项
+            if self.image_items:
+                new_index = min(current_row, len(self.image_items) - 1)
+                self.image_listbox.setCurrentRow(new_index)
+
+            # 更新预览
+            self.update_layout_preview()
         
     def refresh_preview(self):
         """刷新预览"""
@@ -327,9 +400,15 @@ class MainWindow(QMainWindow):
         current_row = self.image_listbox.currentRow()
         if current_row >= 0 and current_row < len(self.image_items):
             self.current_selection = self.image_items[current_row]
-            self.status_bar.showMessage(f"已选择: {self.current_selection.get_display_name()}")
+            item_info = f"已选择: {self.current_selection.get_display_name()} " \
+                       f"({self.current_selection.get_size_text()}, {self.current_selection.get_file_size_text()})"
+            self.status_bar.showMessage(item_info)
+
+            # 加载图片编辑器
+            self.load_image_editor()
         else:
             self.current_selection = None
+            self.current_editor = None
             
     def set_layout_mode(self, mode):
         """设置布局模式"""
@@ -341,6 +420,39 @@ class MainWindow(QMainWindow):
         self.spacing_value = value
         self.status_bar.showMessage(f"间距设置: {value}mm")
         
+    def load_image_editor(self):
+        """加载图片编辑器"""
+        if self.current_selection:
+            try:
+                # 创建圆形编辑器
+                self.current_editor = CircleEditor(self.current_selection.file_path)
+
+                # 更新控制滑块的值
+                self.scale_value = self.current_editor.scale
+                self.offset_x_value = self.current_editor.offset_x
+                self.offset_y_value = self.current_editor.offset_y
+
+                # 更新预览
+                self.update_edit_preview()
+
+            except Exception as e:
+                print(f"加载编辑器失败: {e}")
+
+    def update_edit_preview(self):
+        """更新编辑预览"""
+        # 临时实现
+        if self.current_editor:
+            self.status_bar.showMessage("编辑预览已更新")
+
+    def update_layout_preview(self):
+        """更新A4排版预览"""
+        if not self.image_items:
+            # 显示提示信息
+            return
+
+        # 临时实现：显示图片数量
+        self.status_bar.showMessage(f"排版预览已更新 - 共{len(self.image_items)}张图片")
+
     def show_about(self):
         """显示关于对话框"""
         QMessageBox.about(

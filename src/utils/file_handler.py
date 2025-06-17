@@ -4,9 +4,7 @@
 """
 
 import os
-import tkinter as tk
-from tkinter import filedialog, messagebox
-from PIL import Image, ImageTk
+from PIL import Image
 import sys
 
 # 添加父目录到路径
@@ -25,37 +23,48 @@ class FileHandler:
         返回: 选中的文件路径列表
         """
         try:
-            file_paths = filedialog.askopenfilenames(
-                parent=parent,
-                title="选择图片文件",
-                filetypes=SUPPORTED_IMAGE_FORMATS,
-                initialdir=os.path.expanduser("~")
+            from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+            # 构建文件过滤器
+            filter_str = "图片文件 ("
+            for fmt in SUPPORTED_IMAGE_FORMATS:
+                filter_str += f"*{fmt[1]} "
+            filter_str = filter_str.strip() + ")"
+
+            file_paths, _ = QFileDialog.getOpenFileNames(
+                parent,
+                "选择图片文件",
+                os.path.expanduser("~"),
+                filter_str
             )
-            
+
             if file_paths:
                 # 验证文件
                 valid_files = []
                 invalid_files = []
-                
+
                 for file_path in file_paths:
                     if self.validate_image_file(file_path):
                         valid_files.append(file_path)
                     else:
                         invalid_files.append(os.path.basename(file_path))
-                
+
                 # 显示无效文件警告
-                if invalid_files:
-                    messagebox.showwarning(
+                if invalid_files and parent:
+                    QMessageBox.warning(
+                        parent,
                         "文件格式警告",
                         f"以下文件格式不支持或文件损坏：\n" + "\n".join(invalid_files)
                     )
-                
+
                 return valid_files
-            
+
             return []
-            
+
         except Exception as e:
-            messagebox.showerror("错误", f"选择文件时发生错误：{str(e)}")
+            if parent:
+                from PySide6.QtWidgets import QMessageBox
+                QMessageBox.critical(parent, "错误", f"选择文件时发生错误：{str(e)}")
             return []
     
     def validate_image_file(self, file_path):
@@ -115,34 +124,45 @@ class FileHandler:
         """
         创建缩略图
         参数: file_path - 文件路径, size - 缩略图尺寸
-        返回: PIL.ImageTk.PhotoImage - 缩略图对象
+        返回: QPixmap - 缩略图对象
         """
         try:
+            from PySide6.QtGui import QPixmap
+            from io import BytesIO
+
             with Image.open(file_path) as img:
                 # 转换为RGB模式（确保兼容性）
                 if img.mode != 'RGB':
                     img = img.convert('RGB')
-                
+
                 # 创建缩略图（保持比例）
                 img.thumbnail(size, Image.Resampling.LANCZOS)
-                
+
                 # 创建正方形背景
                 thumbnail = Image.new('RGB', size, (240, 240, 240))
-                
+
                 # 计算居中位置
                 x = (size[0] - img.width) // 2
                 y = (size[1] - img.height) // 2
-                
+
                 # 粘贴图片到背景
                 thumbnail.paste(img, (x, y))
-                
-                # 转换为tkinter可用的格式
-                return ImageTk.PhotoImage(thumbnail)
-                
+
+                # 转换为QPixmap
+                buffer = BytesIO()
+                thumbnail.save(buffer, format='PNG')
+                buffer.seek(0)
+
+                pixmap = QPixmap()
+                pixmap.loadFromData(buffer.getvalue())
+                return pixmap
+
         except Exception as e:
             # 创建错误占位图
-            error_img = Image.new('RGB', size, (200, 200, 200))
-            return ImageTk.PhotoImage(error_img)
+            from PySide6.QtGui import QPixmap
+            error_pixmap = QPixmap(size[0], size[1])
+            error_pixmap.fill()  # 填充为白色
+            return error_pixmap
 
 class ImageItem:
     """图片项目类，用于管理单个图片的信息和状态"""
