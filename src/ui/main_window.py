@@ -8,7 +8,7 @@ import os
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QListWidget, QTabWidget, QFrame,
-    QSlider, QRadioButton, QComboBox, QButtonGroup,
+    QSlider, QRadioButton, QComboBox, QButtonGroup, QSpinBox,
     QScrollArea, QMessageBox, QFileDialog, QStatusBar,
     QMenuBar, QMenu, QSplitter, QGroupBox, QSpacerItem, QSizePolicy
 )
@@ -144,32 +144,68 @@ class MainWindow(QMainWindow):
         """创建图片列表面板（左侧）"""
         # 图片列表框架
         list_frame = QGroupBox("图片列表")
-        list_frame.setFixedWidth(250)
+        list_frame.setFixedWidth(280)  # 增加宽度以容纳数量控制
         parent.addWidget(list_frame)
-        
+
         layout = QVBoxLayout(list_frame)
-        
+
         # 导入按钮
         import_btn = QPushButton("导入图片")
         import_btn.clicked.connect(self.import_images)
         layout.addWidget(import_btn)
-        
+
         # 图片列表
         self.image_listbox = QListWidget()
         self.image_listbox.itemSelectionChanged.connect(self.on_image_select)
         layout.addWidget(self.image_listbox)
-        
+
+        # 数量控制区域
+        quantity_group = QGroupBox("数量设置")
+        layout.addWidget(quantity_group)
+
+        quantity_layout = QVBoxLayout(quantity_group)
+
+        # 数量标签和输入框
+        quantity_input_layout = QHBoxLayout()
+
+        quantity_input_layout.addWidget(QLabel("数量:"))
+
+        self.quantity_spinbox = QSpinBox()
+        self.quantity_spinbox.setRange(1, 50)  # 最多50个
+        self.quantity_spinbox.setValue(1)
+        self.quantity_spinbox.valueChanged.connect(self.on_quantity_change)
+        quantity_input_layout.addWidget(self.quantity_spinbox)
+
+        quantity_layout.addLayout(quantity_input_layout)
+
+        # 快速设置按钮
+        quick_btn_layout = QHBoxLayout()
+
+        btn_1 = QPushButton("1")
+        btn_1.clicked.connect(lambda: self.set_quantity(1))
+        quick_btn_layout.addWidget(btn_1)
+
+        btn_5 = QPushButton("5")
+        btn_5.clicked.connect(lambda: self.set_quantity(5))
+        quick_btn_layout.addWidget(btn_5)
+
+        btn_10 = QPushButton("10")
+        btn_10.clicked.connect(lambda: self.set_quantity(10))
+        quick_btn_layout.addWidget(btn_10)
+
+        quantity_layout.addLayout(quick_btn_layout)
+
         # 操作按钮
         btn_layout = QHBoxLayout()
-        
+
         delete_btn = QPushButton("删除")
         delete_btn.clicked.connect(self.delete_selected)
         btn_layout.addWidget(delete_btn)
-        
+
         clear_btn = QPushButton("清空")
         clear_btn.clicked.connect(self.clear_all)
         btn_layout.addWidget(clear_btn)
-        
+
         layout.addLayout(btn_layout)
         
     def create_edit_preview_panel(self, parent):
@@ -510,7 +546,7 @@ class MainWindow(QMainWindow):
                     self.image_items.append(image_item)
 
                     # 添加到界面列表
-                    display_text = f"{image_item.get_display_name()} ({image_item.get_size_text()})"
+                    display_text = f"{image_item.get_display_name()} ({image_item.get_size_text()}) [×{image_item.quantity}]"
                     self.image_listbox.addItem(display_text)
 
                     added_count += 1
@@ -555,8 +591,11 @@ class MainWindow(QMainWindow):
         参数: format_type - 文件格式 ('pdf', 'png', 'jpg')
         """
         try:
+            # 获取展开后的图片列表
+            expanded_images = self.get_expanded_image_list()
+
             # 验证导出设置
-            is_valid, error_msg = self.export_manager.validate_export_settings(self.image_items, "temp")
+            is_valid, error_msg = self.export_manager.validate_export_settings(expanded_images, "temp")
             if not is_valid:
                 QMessageBox.warning(self, "导出失败", error_msg)
                 return
@@ -600,11 +639,11 @@ class MainWindow(QMainWindow):
             # 执行导出
             if format_type.lower() == 'pdf':
                 success, count = self.export_manager.export_to_pdf(
-                    self.image_items, output_path, layout_type, spacing_mm, margin_mm
+                    expanded_images, output_path, layout_type, spacing_mm, margin_mm
                 )
             else:
                 success, count = self.export_manager.export_to_image(
-                    self.image_items, output_path, format_type.upper(),
+                    expanded_images, output_path, format_type.upper(),
                     layout_type, spacing_mm, margin_mm
                 )
 
@@ -700,11 +739,15 @@ class MainWindow(QMainWindow):
                        f"({self.current_selection.get_size_text()}, {self.current_selection.get_file_size_text()})"
             self.status_bar.showMessage(item_info)
 
+            # 更新数量控制
+            self.quantity_spinbox.setValue(self.current_selection.quantity)
+
             # 加载图片编辑器
             self.load_image_editor()
         else:
             self.current_selection = None
             self.current_editor = None
+            self.quantity_spinbox.setValue(1)
             
     def set_layout_mode(self, mode):
         """设置布局模式"""
@@ -845,6 +888,14 @@ class MainWindow(QMainWindow):
         self.preview_scale_label.setText(f"缩放: {value}%")
         self.update_layout_preview()
 
+    def get_expanded_image_list(self):
+        """获取展开后的图片列表（根据数量复制）"""
+        expanded_list = []
+        for image_item in self.image_items:
+            for _ in range(image_item.quantity):
+                expanded_list.append(image_item)
+        return expanded_list
+
     def update_layout_preview(self):
         """更新A4排版预览"""
         if not self.image_items:
@@ -857,9 +908,12 @@ class MainWindow(QMainWindow):
             spacing_mm = self.spacing_value
             margin_mm = self.margin_value
 
+            # 获取展开后的图片列表
+            expanded_images = self.get_expanded_image_list()
+
             # 创建排版预览
             preview_pixmap = self.layout_engine.create_layout_preview(
-                self.image_items, layout_type, spacing_mm, margin_mm,
+                expanded_images, layout_type, spacing_mm, margin_mm,
                 preview_scale=self.preview_scale_value
             )
 
@@ -872,11 +926,13 @@ class MainWindow(QMainWindow):
 
             # 更新布局信息
             layout_info = self.layout_engine.get_layout_info(layout_type, spacing_mm, margin_mm)
-            info_text = f"可放置: {layout_info['max_count']}个 | 已有: {len(self.image_items)}个"
+            total_images = len(expanded_images)
+            unique_images = len(self.image_items)
+            info_text = f"可放置: {layout_info['max_count']}个 | 总数: {total_images}个 | 种类: {unique_images}个"
             self.layout_info_label.setText(info_text)
 
             # 更新状态栏
-            self.status_bar.showMessage(f"排版预览已更新 - {layout_info['type']}模式")
+            self.status_bar.showMessage(f"排版预览已更新 - {layout_info['type']}模式，共{total_images}个图片")
 
         except Exception as e:
             print(f"更新排版预览失败: {e}")
@@ -915,6 +971,39 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             QMessageBox.critical(self, "错误", f"自动排版失败：{str(e)}")
+
+    def on_quantity_change(self, value):
+        """数量改变事件"""
+        if self.current_selection:
+            self.current_selection.quantity = value
+            self.update_image_list_display()
+            self.update_layout_preview()
+            self.status_bar.showMessage(f"已设置数量: {value}")
+
+    def set_quantity(self, quantity):
+        """设置数量"""
+        if self.current_selection:
+            self.current_selection.quantity = quantity
+            self.quantity_spinbox.setValue(quantity)
+            self.update_image_list_display()
+            self.update_layout_preview()
+            self.status_bar.showMessage(f"已设置数量: {quantity}")
+        else:
+            QMessageBox.warning(self, "提示", "请先选择一张图片")
+
+    def update_image_list_display(self):
+        """更新图片列表显示"""
+        current_row = self.image_listbox.currentRow()
+
+        # 重新构建列表显示
+        self.image_listbox.clear()
+        for image_item in self.image_items:
+            display_text = f"{image_item.get_display_name()} ({image_item.get_size_text()}) [×{image_item.quantity}]"
+            self.image_listbox.addItem(display_text)
+
+        # 恢复选择
+        if current_row >= 0 and current_row < len(self.image_items):
+            self.image_listbox.setCurrentRow(current_row)
 
     def show_about(self):
         """显示关于对话框"""

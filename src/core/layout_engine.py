@@ -38,36 +38,27 @@ class LayoutEngine:
         available_width = self.a4_width_px - 2 * margin_px
         available_height = self.a4_height_px - 2 * margin_px
         
+        # 使用固定间距计算，与密集排版保持一致
+        # 圆心之间的距离（圆形直径 + 用户设定的间距）
+        center_distance = self.badge_diameter_px + spacing_px
+
         # 计算每行和每列可放置的圆形数量
-        circle_with_spacing = self.badge_diameter_px + spacing_px
-        
-        cols = max(1, available_width // circle_with_spacing)
-        rows = max(1, available_height // circle_with_spacing)
-        
-        # 计算实际间距（均匀分布）
-        if cols > 1:
-            actual_spacing_x = (available_width - cols * self.badge_diameter_px) / (cols - 1)
-        else:
-            actual_spacing_x = 0
-            
-        if rows > 1:
-            actual_spacing_y = (available_height - rows * self.badge_diameter_px) / (rows - 1)
-        else:
-            actual_spacing_y = 0
-        
+        cols = max(1, available_width // center_distance)
+        rows = max(1, available_height // center_distance)
+
         # 计算起始位置（居中）
-        total_width = cols * self.badge_diameter_px + (cols - 1) * actual_spacing_x
-        total_height = rows * self.badge_diameter_px + (rows - 1) * actual_spacing_y
-        
+        total_width = cols * center_distance
+        total_height = rows * center_distance
+
         start_x = margin_px + (available_width - total_width) / 2
         start_y = margin_px + (available_height - total_height) / 2
-        
+
         # 生成位置列表
         positions = []
         for row in range(rows):
             for col in range(cols):
-                x = start_x + col * (self.badge_diameter_px + actual_spacing_x) + self.badge_radius_px
-                y = start_y + row * (self.badge_diameter_px + actual_spacing_y) + self.badge_radius_px
+                x = start_x + col * center_distance + self.badge_radius_px
+                y = start_y + row * center_distance + self.badge_radius_px
                 positions.append((int(x), int(y)))
         
         return {
@@ -76,8 +67,9 @@ class LayoutEngine:
             'rows': rows,
             'cols': cols,
             'max_count': rows * cols,
-            'spacing_x': actual_spacing_x,
-            'spacing_y': actual_spacing_y,
+            'spacing_x': spacing_px,
+            'spacing_y': spacing_px,
+            'center_distance': center_distance,
             'margin': margin_px
         }
     
@@ -100,30 +92,14 @@ class LayoutEngine:
         available_height = self.a4_height_px - 2 * margin_px
 
         # 六边形密排的参数计算
-        # 圆形之间的最小距离（确保不重叠）
-        min_distance = self.badge_diameter_px + spacing_px
+        # 使用与网格排版相同的间距计算方式，确保两种排版的实际间距一致
+        # 圆心之间的基础距离（圆形直径 + 用户设定的间距）
+        base_center_distance = self.badge_diameter_px + spacing_px
 
-        # 在六边形密排中，最近的相邻圆形距离分析：
-        # 设水平圆心距离为 d，行间距为 h = d * √3/2
-        # 奇数行相对偶数行偏移 d/2
-        #
-        # 最近的相邻关系有两种：
-        # 1. 同行相邻：距离 = d
-        # 2. 相邻行对角：距离 = √((d/2)² + h²) = √((d/2)² + (d*√3/2)²) = d
-        #
-        # 但实际上，在六边形密排中，真正最近的是：
-        # 相邻行的对角距离 = √((d/2)² + (d*√3/2)²) = √(d²/4 + 3d²/4) = d
-        #
-        # 等等，让我重新分析实际的几何关系...
-        # 从调试结果看，776.4 ≈ 862 * 0.9，这不对
-        #
-        # 实际上，六边形密排中最小距离应该就是水平距离
-        # 但为了安全起见，我们需要确保所有方向的距离都 >= min_distance
-
-        # 为了确保没有重叠，我们需要增加安全系数
-        # 根据详细测试，需要将距离增加12%来完全避免对角重叠
-        # 在零间距时仍能保证不重叠
-        center_distance = min_distance * 1.12
+        # 在六边形密排中，由于对角相邻圆形的距离会小于水平距离
+        # 需要增加安全系数来确保对角方向也满足间距要求
+        # 经过测试，1.12的安全系数可以确保所有方向的间距都不小于用户设定值
+        center_distance = base_center_distance * 1.12
 
         # 行间距：六边形密排中，行间距 = 圆心距离 * √3/2
         row_offset_y = center_distance * math.sqrt(3) / 2

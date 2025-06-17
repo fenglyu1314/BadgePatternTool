@@ -173,13 +173,16 @@ class ImageItem:
         self.thumbnail = None
         self.info = None
         self.is_processed = False
-        
+
         # 编辑参数
         self.scale = 1.0      # 缩放比例
         self.offset_x = 0     # X轴偏移
         self.offset_y = 0     # Y轴偏移
         self.rotation = 0     # 旋转角度
-        
+
+        # 排版参数
+        self.quantity = 1     # 在画布上出现的数量
+
         # 加载图片信息
         self.load_info()
     
