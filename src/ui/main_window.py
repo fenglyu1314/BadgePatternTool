@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QMessageBox, QStatusBar,
     QSplitter, QGroupBox, QSpacerItem, QSizePolicy
 )
-from PySide6.QtCore import Qt, QTimer, QSize
+from PySide6.QtCore import Qt, QTimer, QSize, QPoint
 from PySide6.QtGui import QAction, QIcon
 
 # 添加父目录到路径以便导入模块
@@ -31,6 +31,7 @@ from core.image_processor import ImageProcessor, CircleEditor
 from core.layout_engine import LayoutEngine
 from core.export_manager import ExportManager
 from ui.interactive_preview_label import InteractiveScrollArea
+from ui.interactive_image_editor import InteractiveImageEditor
 
 class MainWindow(QMainWindow):
     """主窗口类"""
@@ -257,20 +258,18 @@ class MainWindow(QMainWindow):
 
         layout = QVBoxLayout(edit_frame)
 
-        # 预览区域（上半部分）
-        preview_frame = QGroupBox("圆形预览")
-        layout.addWidget(preview_frame)
+        # 交互式图片编辑器（直接添加，无额外框框）
+        self.interactive_editor = InteractiveImageEditor()
+        self.interactive_editor.setFixedSize(320, 320)  # 增加高度，给更多编辑空间
+        layout.addWidget(self.interactive_editor)
 
-        preview_layout = QVBoxLayout(preview_frame)
+        # 更新遮罩半径以匹配配置
+        self.interactive_editor.update_mask_radius()
 
-        # 预览标签
-        self.preview_label = QLabel()
-        self.preview_label.setFixedSize(280, 280)
-        self.preview_label.setAlignment(Qt.AlignCenter)
-        self.preview_label.setStyleSheet("border: 2px solid #ccc; background-color: white;")
-        preview_layout.addWidget(self.preview_label)
+        # 连接编辑器信号
+        self.interactive_editor.parameters_changed.connect(self.on_editor_parameters_changed)
 
-        # 编辑控制区域（下半部分）
+        # 编辑控制区域（直接添加，无额外框框）
         self.create_edit_controls(layout)
 
     def create_a4_preview_panel(self, parent):
@@ -461,62 +460,44 @@ class MainWindow(QMainWindow):
 
     def create_edit_controls(self, parent_layout):
         """创建编辑控制区域"""
-        # 控制面板
-        control_frame = QGroupBox("编辑控制")
-        parent_layout.addWidget(control_frame)
-
-        control_layout = QVBoxLayout(control_frame)
-
-        # 缩放控制
-        scale_group = QGroupBox("缩放")
-        control_layout.addWidget(scale_group)
-
-        scale_layout = QVBoxLayout(scale_group)
-
-        self.scale_label = QLabel("缩放: 1.0")
-        scale_layout.addWidget(self.scale_label)
+        # 缩放控制（直接添加，无框框）
+        self.scale_label = QLabel("图片缩放: 1.0")
+        self.scale_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
+        parent_layout.addWidget(self.scale_label)
 
         self.scale_slider = QSlider(Qt.Horizontal)
         self.scale_slider.setRange(10, 300)  # 0.1 到 3.0
         self.scale_slider.setValue(100)  # 1.0
         self.scale_slider.valueChanged.connect(self.on_scale_change)
-        scale_layout.addWidget(self.scale_slider)
+        parent_layout.addWidget(self.scale_slider)
 
-        # 位置控制
-        position_group = QGroupBox("位置调整")
-        control_layout.addWidget(position_group)
-
-        position_layout = QVBoxLayout(position_group)
-
-        # X轴偏移
+        # X轴偏移（直接添加，无框框）
         self.offset_x_label = QLabel("X偏移: 0")
-        position_layout.addWidget(self.offset_x_label)
+        self.offset_x_label.setStyleSheet("font-weight: bold; margin-top: 5px;")
+        parent_layout.addWidget(self.offset_x_label)
 
         self.offset_x_slider = QSlider(Qt.Horizontal)
         self.offset_x_slider.setRange(-100, 100)
         self.offset_x_slider.setValue(0)
         self.offset_x_slider.valueChanged.connect(self.on_position_change)
-        position_layout.addWidget(self.offset_x_slider)
+        parent_layout.addWidget(self.offset_x_slider)
 
-        # Y轴偏移
+        # Y轴偏移（直接添加，无框框）
         self.offset_y_label = QLabel("Y偏移: 0")
-        position_layout.addWidget(self.offset_y_label)
+        self.offset_y_label.setStyleSheet("font-weight: bold; margin-top: 5px;")
+        parent_layout.addWidget(self.offset_y_label)
 
         self.offset_y_slider = QSlider(Qt.Horizontal)
         self.offset_y_slider.setRange(-100, 100)
         self.offset_y_slider.setValue(0)
         self.offset_y_slider.valueChanged.connect(self.on_position_change)
-        position_layout.addWidget(self.offset_y_slider)
+        parent_layout.addWidget(self.offset_y_slider)
 
-        # 数量控制
-        quantity_group = QGroupBox("数量设置")
-        control_layout.addWidget(quantity_group)
-
-        quantity_layout = QVBoxLayout(quantity_group)
-
-        # 数量标签和输入框
+        # 数量控制（直接添加，无框框）
         quantity_input_layout = QHBoxLayout()
-        quantity_input_layout.addWidget(QLabel("数量:"))
+        quantity_label = QLabel("数量:")
+        quantity_label.setStyleSheet("font-weight: bold; margin-top: 5px;")
+        quantity_input_layout.addWidget(quantity_label)
 
         self.quantity_spinbox = QSpinBox()
         self.quantity_spinbox.setRange(1, 50)  # 最多50个
@@ -524,26 +505,25 @@ class MainWindow(QMainWindow):
         self.quantity_spinbox.valueChanged.connect(self.on_quantity_change)
         quantity_input_layout.addWidget(self.quantity_spinbox)
 
-        quantity_layout.addLayout(quantity_input_layout)
-
         # 快速设置按钮
-        quick_btn_layout = QHBoxLayout()
-
         btn_1 = QPushButton("1")
+        btn_1.setMaximumWidth(30)
         btn_1.clicked.connect(lambda: self.set_quantity(1))
-        quick_btn_layout.addWidget(btn_1)
+        quantity_input_layout.addWidget(btn_1)
 
         btn_5 = QPushButton("5")
+        btn_5.setMaximumWidth(30)
         btn_5.clicked.connect(lambda: self.set_quantity(5))
-        quick_btn_layout.addWidget(btn_5)
+        quantity_input_layout.addWidget(btn_5)
 
         btn_10 = QPushButton("10")
+        btn_10.setMaximumWidth(30)
         btn_10.clicked.connect(lambda: self.set_quantity(10))
-        quick_btn_layout.addWidget(btn_10)
+        quantity_input_layout.addWidget(btn_10)
 
-        quantity_layout.addLayout(quick_btn_layout)
+        parent_layout.addLayout(quantity_input_layout)
 
-        # 操作按钮
+        # 操作按钮（直接添加，无框框）
         btn_layout = QHBoxLayout()
 
         reset_btn = QPushButton("重置")
@@ -554,7 +534,7 @@ class MainWindow(QMainWindow):
         apply_btn.clicked.connect(self.apply_edit)
         btn_layout.addWidget(apply_btn)
 
-        control_layout.addLayout(btn_layout)
+        parent_layout.addLayout(btn_layout)
 
         # 初始显示提示
         self.show_edit_hint()
@@ -616,6 +596,10 @@ class MainWindow(QMainWindow):
 
                 # 自动处理新导入的图片（应用最佳参数）
                 self.auto_process_new_images()
+
+                # 重新加载当前选中的编辑器（因为缩放值已更新）
+                if self.current_selection:
+                    self.load_image_editor()
 
                 # 更新A4排版预览
                 self.update_layout_preview()
@@ -843,21 +827,28 @@ class MainWindow(QMainWindow):
         """加载图片编辑器"""
         if self.current_selection:
             try:
-                # 创建圆形编辑器
-                self.current_editor = CircleEditor(self.current_selection.file_path)
+                # 加载图片到交互式编辑器
+                success = self.interactive_editor.load_image(self.current_selection.file_path)
 
-                # 更新控制滑块的值
-                self.scale_slider.setValue(int(self.current_editor.scale * 100))
-                self.offset_x_slider.setValue(self.current_editor.offset_x)
-                self.offset_y_slider.setValue(self.current_editor.offset_y)
+                if success:
+                    # 创建圆形编辑器（用于兼容性）
+                    self.current_editor = CircleEditor(self.current_selection.file_path)
 
-                # 更新标签
-                self.scale_label.setText(f"缩放: {self.current_editor.scale:.1f}")
-                self.offset_x_label.setText(f"X偏移: {self.current_editor.offset_x}")
-                self.offset_y_label.setText(f"Y偏移: {self.current_editor.offset_y}")
+                    # 如果图片项已有编辑参数，应用到编辑器
+                    if hasattr(self.current_selection, 'scale'):
+                        self.interactive_editor.set_parameters(
+                            self.current_selection.scale,
+                            self.current_selection.offset_x,
+                            self.current_selection.offset_y
+                        )
+                        self.current_editor.scale = self.current_selection.scale
+                        self.current_editor.offset_x = self.current_selection.offset_x
+                        self.current_editor.offset_y = self.current_selection.offset_y
 
-                # 更新预览
-                self.update_edit_preview()
+                    # 更新控制滑块的值
+                    self.update_sliders_from_editor()
+                else:
+                    self.show_edit_hint()
 
             except Exception as e:
                 print(f"加载编辑器失败: {e}")
@@ -865,33 +856,61 @@ class MainWindow(QMainWindow):
 
     def show_edit_hint(self):
         """显示编辑提示"""
-        self.preview_label.setText("选择左侧图片\n开始编辑")
-        self.preview_label.setStyleSheet("border: 2px solid #ccc; background-color: #f5f5f5; color: #666;")
+        # 清空交互式编辑器
+        self.interactive_editor.original_image = None
+        self.interactive_editor.update()
 
-    def update_edit_preview(self):
-        """更新编辑预览"""
+    def update_sliders_from_editor(self):
+        """从编辑器更新滑块值"""
         if self.current_editor:
-            try:
-                # 获取预览图片
-                preview_pixmap = self.current_editor.get_preview(preview_size=240)
+            # 更新控制滑块的值
+            self.scale_slider.setValue(int(self.current_editor.scale * 100))
+            self.offset_x_slider.setValue(self.current_editor.offset_x)
+            self.offset_y_slider.setValue(self.current_editor.offset_y)
 
-                # 显示预览图片
-                self.preview_label.setPixmap(preview_pixmap)
-                self.preview_label.setStyleSheet("border: 2px solid #ccc; background-color: white;")
+            # 更新标签
+            self.scale_label.setText(f"图片缩放: {self.current_editor.scale:.1f}")
+            self.offset_x_label.setText(f"X偏移: {self.current_editor.offset_x}")
+            self.offset_y_label.setText(f"Y偏移: {self.current_editor.offset_y}")
 
-            except Exception as e:
-                print(f"更新预览失败: {e}")
-                self.show_edit_hint()
-        else:
-            self.show_edit_hint()
+    def on_editor_parameters_changed(self, scale, offset_x, offset_y):
+        """交互式编辑器参数改变事件"""
+        if self.current_editor:
+            # 更新圆形编辑器参数
+            self.current_editor.scale = scale
+            self.current_editor.offset_x = offset_x
+            self.current_editor.offset_y = offset_y
+
+            # 更新滑块（不触发信号）
+            self.scale_slider.blockSignals(True)
+            self.offset_x_slider.blockSignals(True)
+            self.offset_y_slider.blockSignals(True)
+
+            self.scale_slider.setValue(int(scale * 100))
+            self.offset_x_slider.setValue(offset_x)
+            self.offset_y_slider.setValue(offset_y)
+
+            self.scale_slider.blockSignals(False)
+            self.offset_x_slider.blockSignals(False)
+            self.offset_y_slider.blockSignals(False)
+
+            # 更新标签
+            self.scale_label.setText(f"图片缩放: {scale:.1f}")
+            self.offset_x_label.setText(f"X偏移: {offset_x}")
+            self.offset_y_label.setText(f"Y偏移: {offset_y}")
 
     def on_scale_change(self, value):
         """缩放改变事件（带防抖）"""
         if self.current_editor:
             scale = value / 100.0  # 转换为0.1-3.0范围
             self.scale_value = scale
-            self.scale_label.setText(f"缩放: {scale:.1f}")
+            self.scale_label.setText(f"图片缩放: {scale:.1f}")
             self.current_editor.set_scale(scale)
+
+            # 同步到交互式编辑器
+            if hasattr(self, 'interactive_editor') and self.interactive_editor.original_image:
+                self.interactive_editor.image_scale = scale
+                self.interactive_editor.update()
 
             # 使用防抖定时器延迟更新预览
             self.edit_preview_timer.stop()
@@ -911,6 +930,11 @@ class MainWindow(QMainWindow):
 
             self.current_editor.set_offset(offset_x, offset_y)
 
+            # 同步到交互式编辑器
+            if hasattr(self, 'interactive_editor') and self.interactive_editor.original_image:
+                self.interactive_editor.image_offset = QPoint(offset_x, offset_y)
+                self.interactive_editor.update()
+
             # 使用防抖定时器延迟更新预览
             self.edit_preview_timer.stop()
             self.edit_preview_timer.start(self.debounce_delay)
@@ -924,6 +948,10 @@ class MainWindow(QMainWindow):
             self.scale_slider.setValue(int(self.current_editor.scale * 100))
             self.offset_x_slider.setValue(self.current_editor.offset_x)
             self.offset_y_slider.setValue(self.current_editor.offset_y)
+
+            # 同步到交互式编辑器
+            if hasattr(self, 'interactive_editor'):
+                self.interactive_editor.reset_view()
 
             # 更新预览
             self.update_edit_preview()
@@ -976,7 +1004,11 @@ class MainWindow(QMainWindow):
         """预览缩放改变事件（带防抖）"""
         scale = value / 100.0
         self.preview_scale_value = scale
-        self.preview_scale_label.setText(f"缩放: {value}%")
+        self.preview_scale_label.setText(f"预览缩放: {value}%")
+
+        # 同步到InteractiveScrollArea的缩放
+        if hasattr(self, 'interactive_scroll_area'):
+            self.interactive_scroll_area.preview_label.set_scale_factor(scale)
 
         # 使用防抖定时器延迟更新布局预览
         self.layout_preview_timer.stop()
@@ -1126,6 +1158,11 @@ class MainWindow(QMainWindow):
         # 恢复选择
         if current_row >= 0 and current_row < len(self.image_items):
             self.image_listbox.setCurrentRow(current_row)
+
+    def update_edit_preview(self):
+        """更新编辑预览（兼容性方法）"""
+        # 新版本使用交互式编辑器，这个方法主要用于兼容性
+        pass
 
     def delayed_update_edit_preview(self):
         """延迟更新编辑预览（防抖）"""
