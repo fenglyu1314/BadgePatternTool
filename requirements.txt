@@ -1,6 +1,6 @@
 # BadgePatternTool 依赖包
 # GUI框架
-tkinter  # Python内置，无需安装
+PySide6>=6.5.0
 
 # 图像处理
 Pillow>=10.0.0

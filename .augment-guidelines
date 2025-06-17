@@ -26,7 +26,7 @@ persona:
     "文档": "中文"
   },
   "技术栈": {
-    "GUI框架": "推荐使用tkinter、PyQt6或Kivy",
+    "GUI框架": "使用PySide6作为主要GUI框架",
     "包管理": "使用pip或poetry管理依赖",
     "打包工具": "推荐PyInstaller或cx_Freeze"
   }
