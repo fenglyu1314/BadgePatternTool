@@ -11,8 +11,8 @@ from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QListWidget, QListWidgetItem,
     QSlider, QRadioButton, QComboBox, QButtonGroup, QSpinBox,
-    QMessageBox, QStatusBar,
-    QSplitter, QGroupBox, QSpacerItem, QSizePolicy
+    QMessageBox, QStatusBar, QSplitter, QGroupBox,
+    QSpacerItem, QSizePolicy
 )
 from PySide6.QtCore import Qt, QTimer, QSize, QPoint
 from PySide6.QtGui import QAction, QIcon
@@ -1229,6 +1229,9 @@ class MainWindow(QMainWindow):
 
     def on_config_changed(self, key, old_value, new_value):
         """配置变化事件"""
+        # 避免未使用参数警告
+        _ = old_value, new_value
+
         if key == 'badge_diameter_mm':
             # 重新创建所有编辑器和预览
             self.current_editor = None

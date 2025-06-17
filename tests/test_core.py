@@ -104,9 +104,14 @@ class TestExportManager(unittest.TestCase):
         valid, error = self.manager.validate_export_settings([], "test.pdf")
         self.assertFalse(valid)
         self.assertIn("没有可导出的图片", error)
-        
+
+        # 创建模拟的图片项目
+        from utils.file_handler import ImageItem
+        mock_item = ImageItem("test.jpg")
+        mock_item.is_processed = True
+
         # 测试空输出路径
-        valid, error = self.manager.validate_export_settings([1], "")
+        valid, error = self.manager.validate_export_settings([mock_item], "")
         self.assertFalse(valid)
         self.assertIn("请指定输出文件路径", error)
 

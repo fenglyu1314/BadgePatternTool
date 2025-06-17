@@ -17,6 +17,13 @@ from utils.config import (
     mm_to_pixels, app_config
 )
 
+# PySide6导入（用于预览功能）
+try:
+    from PySide6.QtGui import QPixmap
+    PYSIDE6_AVAILABLE = True
+except ImportError:
+    PYSIDE6_AVAILABLE = False
+
 class LayoutEngine:
     """A4排版引擎类"""
     
@@ -94,8 +101,6 @@ class LayoutEngine:
             margin_mm: 页边距（毫米）
         返回: dict - 布局信息
         """
-        import math
-
         # 转换为像素
         spacing_px = mm_to_pixels(spacing_mm)
         margin_px = mm_to_pixels(margin_mm)
@@ -233,9 +238,11 @@ class LayoutEngine:
             preview_scale: 预览缩放比例
         返回: QPixmap - 预览图片
         """
-        try:
-            from PySide6.QtGui import QPixmap
+        if not PYSIDE6_AVAILABLE:
+            print("PySide6不可用，无法创建排版预览")
+            return None
 
+        try:
             # 计算布局
             if layout_type == 'grid':
                 layout = self.calculate_grid_layout(spacing_mm, margin_mm)
@@ -317,7 +324,6 @@ class LayoutEngine:
         except Exception as e:
             print(f"创建排版预览失败: {e}")
             # 返回空白预览
-            from PySide6.QtGui import QPixmap
             blank_pixmap = QPixmap(400, 566)
             blank_pixmap.fill()  # 填充为白色
             return blank_pixmap

@@ -13,6 +13,13 @@ from PIL import Image, ImageDraw
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.config import app_config
 
+# PySide6导入（用于预览功能）
+try:
+    from PySide6.QtGui import QPixmap
+    PYSIDE6_AVAILABLE = True
+except ImportError:
+    PYSIDE6_AVAILABLE = False
+
 class ImageProcessor:
     """图片处理器类"""
     
@@ -137,9 +144,11 @@ class ImageProcessor:
             preview_size: 预览图片大小
         返回: QPixmap - 可用于PySide6显示的图片
         """
-        try:
-            from PySide6.QtGui import QPixmap
+        if not PYSIDE6_AVAILABLE:
+            print("PySide6不可用，无法创建预览图片")
+            return None
 
+        try:
             # 创建圆形裁剪
             circle_img = self.create_circular_crop(image_path, scale, offset_x, offset_y, rotation)
 
@@ -159,7 +168,6 @@ class ImageProcessor:
         except Exception as e:
             print(f"创建预览图片失败: {e}")
             # 返回空白预览
-            from PySide6.QtGui import QPixmap
             blank_pixmap = QPixmap(preview_size, preview_size)
             blank_pixmap.fill()  # 填充为白色
             return blank_pixmap

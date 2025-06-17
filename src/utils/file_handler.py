@@ -4,12 +4,16 @@
 """
 
 import os
-from PIL import Image
 import sys
+from PIL import Image
 
 # 添加父目录到路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.config import *
+from utils.config import SUPPORTED_IMAGE_FORMATS, MAX_IMAGE_COUNT
+
+# 本地常量
+MAX_IMAGE_SIZE_MB = 50  # 最大图片文件大小（MB）
+THUMBNAIL_SIZE = 100    # 缩略图尺寸
 
 class FileHandler:
     """文件处理类"""
