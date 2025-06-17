@@ -261,12 +261,87 @@ class MainWindow(QMainWindow):
         
     def create_edit_area(self):
         """创建编辑区域"""
-        layout = QVBoxLayout(self.edit_tab)
-        
-        # 临时标签
-        label = QLabel("单图编辑功能开发中...")
-        label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(label)
+        layout = QHBoxLayout(self.edit_tab)
+
+        # 预览区域
+        preview_frame = QGroupBox("圆形预览")
+        preview_frame.setFixedWidth(280)
+        layout.addWidget(preview_frame)
+
+        preview_layout = QVBoxLayout(preview_frame)
+
+        # 预览标签
+        self.preview_label = QLabel()
+        self.preview_label.setFixedSize(250, 250)
+        self.preview_label.setAlignment(Qt.AlignCenter)
+        self.preview_label.setStyleSheet("border: 2px solid #ccc; background-color: white;")
+        preview_layout.addWidget(self.preview_label)
+
+        # 控制面板
+        control_frame = QGroupBox("编辑控制")
+        layout.addWidget(control_frame)
+
+        control_layout = QVBoxLayout(control_frame)
+
+        # 缩放控制
+        scale_group = QGroupBox("缩放")
+        control_layout.addWidget(scale_group)
+
+        scale_layout = QVBoxLayout(scale_group)
+
+        self.scale_label = QLabel("缩放: 1.0")
+        scale_layout.addWidget(self.scale_label)
+
+        self.scale_slider = QSlider(Qt.Horizontal)
+        self.scale_slider.setRange(10, 300)  # 0.1 到 3.0
+        self.scale_slider.setValue(100)  # 1.0
+        self.scale_slider.valueChanged.connect(self.on_scale_change)
+        scale_layout.addWidget(self.scale_slider)
+
+        # 位置控制
+        position_group = QGroupBox("位置调整")
+        control_layout.addWidget(position_group)
+
+        position_layout = QVBoxLayout(position_group)
+
+        # X轴偏移
+        self.offset_x_label = QLabel("X偏移: 0")
+        position_layout.addWidget(self.offset_x_label)
+
+        self.offset_x_slider = QSlider(Qt.Horizontal)
+        self.offset_x_slider.setRange(-100, 100)
+        self.offset_x_slider.setValue(0)
+        self.offset_x_slider.valueChanged.connect(self.on_position_change)
+        position_layout.addWidget(self.offset_x_slider)
+
+        # Y轴偏移
+        self.offset_y_label = QLabel("Y偏移: 0")
+        position_layout.addWidget(self.offset_y_label)
+
+        self.offset_y_slider = QSlider(Qt.Horizontal)
+        self.offset_y_slider.setRange(-100, 100)
+        self.offset_y_slider.setValue(0)
+        self.offset_y_slider.valueChanged.connect(self.on_position_change)
+        position_layout.addWidget(self.offset_y_slider)
+
+        # 操作按钮
+        btn_layout = QHBoxLayout()
+
+        reset_btn = QPushButton("重置")
+        reset_btn.clicked.connect(self.reset_edit)
+        btn_layout.addWidget(reset_btn)
+
+        apply_btn = QPushButton("应用")
+        apply_btn.clicked.connect(self.apply_edit)
+        btn_layout.addWidget(apply_btn)
+
+        control_layout.addLayout(btn_layout)
+
+        # 添加弹性空间
+        control_layout.addItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
+
+        # 初始显示提示
+        self.show_edit_hint()
         
     def create_layout_area(self):
         """创建A4排版预览区域"""
@@ -428,21 +503,99 @@ class MainWindow(QMainWindow):
                 self.current_editor = CircleEditor(self.current_selection.file_path)
 
                 # 更新控制滑块的值
-                self.scale_value = self.current_editor.scale
-                self.offset_x_value = self.current_editor.offset_x
-                self.offset_y_value = self.current_editor.offset_y
+                self.scale_slider.setValue(int(self.current_editor.scale * 100))
+                self.offset_x_slider.setValue(self.current_editor.offset_x)
+                self.offset_y_slider.setValue(self.current_editor.offset_y)
+
+                # 更新标签
+                self.scale_label.setText(f"缩放: {self.current_editor.scale:.1f}")
+                self.offset_x_label.setText(f"X偏移: {self.current_editor.offset_x}")
+                self.offset_y_label.setText(f"Y偏移: {self.current_editor.offset_y}")
 
                 # 更新预览
                 self.update_edit_preview()
 
             except Exception as e:
                 print(f"加载编辑器失败: {e}")
+                self.show_edit_hint()
+
+    def show_edit_hint(self):
+        """显示编辑提示"""
+        self.preview_label.setText("选择左侧图片\n开始编辑")
+        self.preview_label.setStyleSheet("border: 2px solid #ccc; background-color: #f5f5f5; color: #666;")
 
     def update_edit_preview(self):
         """更新编辑预览"""
-        # 临时实现
         if self.current_editor:
-            self.status_bar.showMessage("编辑预览已更新")
+            try:
+                # 获取预览图片
+                preview_pixmap = self.current_editor.get_preview(preview_size=240)
+
+                # 显示预览图片
+                self.preview_label.setPixmap(preview_pixmap)
+                self.preview_label.setStyleSheet("border: 2px solid #ccc; background-color: white;")
+
+            except Exception as e:
+                print(f"更新预览失败: {e}")
+                self.show_edit_hint()
+        else:
+            self.show_edit_hint()
+
+    def on_scale_change(self, value):
+        """缩放改变事件"""
+        if self.current_editor:
+            scale = value / 100.0  # 转换为0.1-3.0范围
+            self.scale_value = scale
+            self.scale_label.setText(f"缩放: {scale:.1f}")
+            self.current_editor.set_scale(scale)
+            self.update_edit_preview()
+
+    def on_position_change(self):
+        """位置改变事件"""
+        if self.current_editor:
+            offset_x = self.offset_x_slider.value()
+            offset_y = self.offset_y_slider.value()
+
+            self.offset_x_value = offset_x
+            self.offset_y_value = offset_y
+
+            self.offset_x_label.setText(f"X偏移: {offset_x}")
+            self.offset_y_label.setText(f"Y偏移: {offset_y}")
+
+            self.current_editor.set_offset(offset_x, offset_y)
+            self.update_edit_preview()
+
+    def reset_edit(self):
+        """重置编辑参数"""
+        if self.current_editor:
+            self.current_editor.reset_to_optimal()
+
+            # 更新控制滑块
+            self.scale_slider.setValue(int(self.current_editor.scale * 100))
+            self.offset_x_slider.setValue(self.current_editor.offset_x)
+            self.offset_y_slider.setValue(self.current_editor.offset_y)
+
+            # 更新预览
+            self.update_edit_preview()
+
+            self.status_bar.showMessage("已重置编辑参数")
+
+    def apply_edit(self):
+        """应用编辑"""
+        if self.current_editor and self.current_selection:
+            # 保存编辑参数到图片项
+            self.current_selection.scale = self.current_editor.scale
+            self.current_selection.offset_x = self.current_editor.offset_x
+            self.current_selection.offset_y = self.current_editor.offset_y
+            self.current_selection.rotation = self.current_editor.rotation
+            self.current_selection.is_processed = True
+
+            self.status_bar.showMessage("编辑参数已应用")
+
+            # 更新A4排版预览
+            self.update_layout_preview()
+
+            QMessageBox.information(self, "提示", "编辑参数已保存，可在A4排版预览中查看效果")
 
     def update_layout_preview(self):
         """更新A4排版预览"""

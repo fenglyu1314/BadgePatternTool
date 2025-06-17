@@ -4,9 +4,10 @@
 """
 
 import math
-from PIL import Image, ImageDraw, ImageTk
+from PIL import Image, ImageDraw
 import sys
 import os
+from io import BytesIO
 
 # 添加父目录到路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -128,24 +129,34 @@ class ImageProcessor:
             offset_y: Y轴偏移
             rotation: 旋转角度
             preview_size: 预览图片大小
-        返回: PIL.ImageTk.PhotoImage - 可用于tkinter显示的图片
+        返回: QPixmap - 可用于PySide6显示的图片
         """
         try:
+            from PySide6.QtGui import QPixmap
+
             # 创建圆形裁剪
             circle_img = self.create_circular_crop(image_path, scale, offset_x, offset_y, rotation)
-            
+
             # 缩放到预览大小
             if circle_img.size[0] != preview_size:
                 circle_img = circle_img.resize((preview_size, preview_size), Image.Resampling.LANCZOS)
-            
-            # 转换为tkinter可用格式
-            return ImageTk.PhotoImage(circle_img)
-            
+
+            # 转换为QPixmap
+            buffer = BytesIO()
+            circle_img.save(buffer, format='PNG')
+            buffer.seek(0)
+
+            pixmap = QPixmap()
+            pixmap.loadFromData(buffer.getvalue())
+            return pixmap
+
         except Exception as e:
             print(f"创建预览图片失败: {e}")
             # 返回空白预览
-            blank_img = Image.new('RGB', (preview_size, preview_size), (240, 240, 240))
-            return ImageTk.PhotoImage(blank_img)
+            from PySide6.QtGui import QPixmap
+            blank_pixmap = QPixmap(preview_size, preview_size)
+            blank_pixmap.fill()  # 填充为白色
+            return blank_pixmap
     
     def get_optimal_scale(self, image_path):
         """
