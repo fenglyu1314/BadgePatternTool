@@ -1,0 +1,206 @@
+"""
+文件处理工具模块
+处理图片文件的导入、验证和管理
+"""
+
+import os
+import tkinter as tk
+from tkinter import filedialog, messagebox
+from PIL import Image, ImageTk
+import sys
+
+# 添加父目录到路径
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.config import *
+
+class FileHandler:
+    """文件处理类"""
+    
+    def __init__(self):
+        self.supported_formats = ['.jpg', '.jpeg', '.png', '.bmp', '.gif', '.tiff']
+        
+    def select_images(self, parent=None):
+        """
+        选择图片文件
+        返回: 选中的文件路径列表
+        """
+        try:
+            file_paths = filedialog.askopenfilenames(
+                parent=parent,
+                title="选择图片文件",
+                filetypes=SUPPORTED_IMAGE_FORMATS,
+                initialdir=os.path.expanduser("~")
+            )
+            
+            if file_paths:
+                # 验证文件
+                valid_files = []
+                invalid_files = []
+                
+                for file_path in file_paths:
+                    if self.validate_image_file(file_path):
+                        valid_files.append(file_path)
+                    else:
+                        invalid_files.append(os.path.basename(file_path))
+                
+                # 显示无效文件警告
+                if invalid_files:
+                    messagebox.showwarning(
+                        "文件格式警告",
+                        f"以下文件格式不支持或文件损坏：\n" + "\n".join(invalid_files)
+                    )
+                
+                return valid_files
+            
+            return []
+            
+        except Exception as e:
+            messagebox.showerror("错误", f"选择文件时发生错误：{str(e)}")
+            return []
+    
+    def validate_image_file(self, file_path):
+        """
+        验证图片文件是否有效
+        参数: file_path - 文件路径
+        返回: bool - 是否有效
+        """
+        try:
+            # 检查文件是否存在
+            if not os.path.exists(file_path):
+                return False
+            
+            # 检查文件扩展名
+            _, ext = os.path.splitext(file_path.lower())
+            if ext not in self.supported_formats:
+                return False
+            
+            # 检查文件大小
+            file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+            if file_size_mb > MAX_IMAGE_SIZE_MB:
+                return False
+            
+            # 尝试打开图片验证格式
+            with Image.open(file_path) as img:
+                img.verify()  # 验证图片完整性
+                
+            return True
+            
+        except Exception:
+            return False
+    
+    def get_image_info(self, file_path):
+        """
+        获取图片信息
+        参数: file_path - 文件路径
+        返回: dict - 图片信息
+        """
+        try:
+            with Image.open(file_path) as img:
+                return {
+                    'path': file_path,
+                    'filename': os.path.basename(file_path),
+                    'size': img.size,
+                    'format': img.format,
+                    'mode': img.mode,
+                    'file_size': os.path.getsize(file_path)
+                }
+        except Exception as e:
+            return {
+                'path': file_path,
+                'filename': os.path.basename(file_path),
+                'error': str(e)
+            }
+    
+    def create_thumbnail(self, file_path, size=(THUMBNAIL_SIZE, THUMBNAIL_SIZE)):
+        """
+        创建缩略图
+        参数: file_path - 文件路径, size - 缩略图尺寸
+        返回: PIL.ImageTk.PhotoImage - 缩略图对象
+        """
+        try:
+            with Image.open(file_path) as img:
+                # 转换为RGB模式（确保兼容性）
+                if img.mode != 'RGB':
+                    img = img.convert('RGB')
+                
+                # 创建缩略图（保持比例）
+                img.thumbnail(size, Image.Resampling.LANCZOS)
+                
+                # 创建正方形背景
+                thumbnail = Image.new('RGB', size, (240, 240, 240))
+                
+                # 计算居中位置
+                x = (size[0] - img.width) // 2
+                y = (size[1] - img.height) // 2
+                
+                # 粘贴图片到背景
+                thumbnail.paste(img, (x, y))
+                
+                # 转换为tkinter可用的格式
+                return ImageTk.PhotoImage(thumbnail)
+                
+        except Exception as e:
+            # 创建错误占位图
+            error_img = Image.new('RGB', size, (200, 200, 200))
+            return ImageTk.PhotoImage(error_img)
+
+class ImageItem:
+    """图片项目类，用于管理单个图片的信息和状态"""
+    
+    def __init__(self, file_path):
+        self.file_path = file_path
+        self.filename = os.path.basename(file_path)
+        self.thumbnail = None
+        self.info = None
+        self.is_processed = False
+        
+        # 编辑参数
+        self.scale = 1.0      # 缩放比例
+        self.offset_x = 0     # X轴偏移
+        self.offset_y = 0     # Y轴偏移
+        self.rotation = 0     # 旋转角度
+        
+        # 加载图片信息
+        self.load_info()
+    
+    def load_info(self):
+        """加载图片信息"""
+        file_handler = FileHandler()
+        self.info = file_handler.get_image_info(self.file_path)
+    
+    def create_thumbnail(self, size=(THUMBNAIL_SIZE, THUMBNAIL_SIZE)):
+        """创建缩略图"""
+        if not self.thumbnail:
+            file_handler = FileHandler()
+            self.thumbnail = file_handler.create_thumbnail(self.file_path, size)
+        return self.thumbnail
+    
+    def get_display_name(self):
+        """获取显示名称"""
+        return self.filename
+    
+    def get_size_text(self):
+        """获取尺寸文本"""
+        if self.info and 'size' in self.info:
+            w, h = self.info['size']
+            return f"{w}×{h}"
+        return "未知"
+    
+    def get_file_size_text(self):
+        """获取文件大小文本"""
+        if self.info and 'file_size' in self.info:
+            size_mb = self.info['file_size'] / (1024 * 1024)
+            if size_mb < 1:
+                size_kb = self.info['file_size'] / 1024
+                return f"{size_kb:.1f}KB"
+            else:
+                return f"{size_mb:.1f}MB"
+        return "未知"
+    
+    def reset_edit_params(self):
+        """重置编辑参数"""
+        self.scale = 1.0
+        self.offset_x = 0
+        self.offset_y = 0
+        self.rotation = 0
+        self.is_processed = False

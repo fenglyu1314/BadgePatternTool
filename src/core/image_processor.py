@@ -1,0 +1,248 @@
+"""
+图片处理核心模块
+实现圆形裁剪、缩放、移动等图片处理功能
+"""
+
+import math
+from PIL import Image, ImageDraw, ImageTk
+import sys
+import os
+
+# 添加父目录到路径
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils.config import *
+
+class ImageProcessor:
+    """图片处理器类"""
+    
+    def __init__(self):
+        self.badge_diameter_px = BADGE_DIAMETER_PX
+        self.badge_radius_px = self.badge_diameter_px // 2
+        
+    def create_circular_crop(self, image_path, scale=1.0, offset_x=0, offset_y=0, rotation=0):
+        """
+        创建圆形裁剪
+        参数:
+            image_path: 图片路径
+            scale: 缩放比例 (1.0 = 原始大小)
+            offset_x: X轴偏移 (像素)
+            offset_y: Y轴偏移 (像素)
+            rotation: 旋转角度 (度)
+        返回: PIL.Image - 裁剪后的圆形图片
+        """
+        try:
+            # 打开原始图片
+            with Image.open(image_path) as original_img:
+                # 转换为RGB模式
+                if original_img.mode != 'RGB':
+                    original_img = original_img.convert('RGB')
+                
+                # 应用旋转
+                if rotation != 0:
+                    original_img = original_img.rotate(rotation, expand=True, fillcolor=(255, 255, 255))
+                
+                # 计算缩放后的尺寸
+                orig_width, orig_height = original_img.size
+                new_width = int(orig_width * scale)
+                new_height = int(orig_height * scale)
+                
+                # 应用缩放
+                if scale != 1.0:
+                    original_img = original_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+                
+                # 创建圆形裁剪区域
+                circle_img = self._crop_to_circle(original_img, offset_x, offset_y)
+                
+                return circle_img
+                
+        except Exception as e:
+            print(f"圆形裁剪失败: {e}")
+            # 返回空白圆形图片
+            return self._create_blank_circle()
+    
+    def _crop_to_circle(self, img, offset_x=0, offset_y=0):
+        """
+        将图片裁剪为圆形
+        参数:
+            img: PIL.Image对象
+            offset_x: X轴偏移
+            offset_y: Y轴偏移
+        返回: PIL.Image - 圆形图片
+        """
+        # 创建目标圆形画布
+        circle_size = self.badge_diameter_px
+        circle_img = Image.new('RGBA', (circle_size, circle_size), (255, 255, 255, 0))
+        
+        # 计算图片在圆形中的位置
+        img_width, img_height = img.size
+        
+        # 计算居中位置
+        center_x = circle_size // 2
+        center_y = circle_size // 2
+        
+        # 应用偏移
+        paste_x = center_x - img_width // 2 + offset_x
+        paste_y = center_y - img_height // 2 + offset_y
+        
+        # 创建临时画布用于粘贴图片
+        temp_canvas = Image.new('RGB', (circle_size, circle_size), (255, 255, 255))
+        
+        # 粘贴图片到临时画布
+        if paste_x < circle_size and paste_y < circle_size and \
+           paste_x + img_width > 0 and paste_y + img_height > 0:
+            temp_canvas.paste(img, (paste_x, paste_y))
+        
+        # 创建圆形遮罩
+        mask = Image.new('L', (circle_size, circle_size), 0)
+        draw = ImageDraw.Draw(mask)
+        draw.ellipse([0, 0, circle_size, circle_size], fill=255)
+        
+        # 应用圆形遮罩
+        circle_img.paste(temp_canvas, (0, 0))
+        circle_img.putalpha(mask)
+        
+        # 转换为RGB（去除透明度）
+        final_img = Image.new('RGB', (circle_size, circle_size), (255, 255, 255))
+        final_img.paste(circle_img, (0, 0), circle_img)
+        
+        return final_img
+    
+    def _create_blank_circle(self):
+        """创建空白圆形图片"""
+        circle_size = self.badge_diameter_px
+        img = Image.new('RGB', (circle_size, circle_size), (240, 240, 240))
+        
+        # 绘制圆形边框
+        draw = ImageDraw.Draw(img)
+        draw.ellipse([2, 2, circle_size-2, circle_size-2], outline=(200, 200, 200), width=2)
+        
+        return img
+    
+    def create_preview_image(self, image_path, scale=1.0, offset_x=0, offset_y=0, rotation=0, preview_size=200):
+        """
+        创建预览图片（用于界面显示）
+        参数:
+            image_path: 图片路径
+            scale: 缩放比例
+            offset_x: X轴偏移
+            offset_y: Y轴偏移
+            rotation: 旋转角度
+            preview_size: 预览图片大小
+        返回: PIL.ImageTk.PhotoImage - 可用于tkinter显示的图片
+        """
+        try:
+            # 创建圆形裁剪
+            circle_img = self.create_circular_crop(image_path, scale, offset_x, offset_y, rotation)
+            
+            # 缩放到预览大小
+            if circle_img.size[0] != preview_size:
+                circle_img = circle_img.resize((preview_size, preview_size), Image.Resampling.LANCZOS)
+            
+            # 转换为tkinter可用格式
+            return ImageTk.PhotoImage(circle_img)
+            
+        except Exception as e:
+            print(f"创建预览图片失败: {e}")
+            # 返回空白预览
+            blank_img = Image.new('RGB', (preview_size, preview_size), (240, 240, 240))
+            return ImageTk.PhotoImage(blank_img)
+    
+    def get_optimal_scale(self, image_path):
+        """
+        获取最佳缩放比例（使图片刚好填满圆形）
+        参数:
+            image_path: 图片路径
+        返回: float - 最佳缩放比例
+        """
+        try:
+            with Image.open(image_path) as img:
+                img_width, img_height = img.size
+                
+                # 计算使图片完全填满圆形所需的缩放比例
+                # 取较小边的缩放比例，确保图片完全覆盖圆形
+                scale_x = self.badge_diameter_px / img_width
+                scale_y = self.badge_diameter_px / img_height
+                
+                # 使用较大的缩放比例确保完全覆盖
+                optimal_scale = max(scale_x, scale_y)
+                
+                return optimal_scale
+                
+        except Exception as e:
+            print(f"计算最佳缩放比例失败: {e}")
+            return 1.0
+    
+    def get_max_offset_range(self, image_path, scale=1.0):
+        """
+        获取最大偏移范围
+        参数:
+            image_path: 图片路径
+            scale: 当前缩放比例
+        返回: tuple - (max_offset_x, max_offset_y)
+        """
+        try:
+            with Image.open(image_path) as img:
+                img_width, img_height = img.size
+                
+                # 计算缩放后的尺寸
+                scaled_width = int(img_width * scale)
+                scaled_height = int(img_height * scale)
+                
+                # 计算最大偏移（图片边缘刚好接触圆形边缘）
+                max_offset_x = max(0, (scaled_width - self.badge_diameter_px) // 2)
+                max_offset_y = max(0, (scaled_height - self.badge_diameter_px) // 2)
+                
+                return max_offset_x, max_offset_y
+                
+        except Exception as e:
+            print(f"计算最大偏移范围失败: {e}")
+            return 0, 0
+
+class CircleEditor:
+    """圆形编辑器类，用于交互式编辑"""
+    
+    def __init__(self, image_path):
+        self.image_path = image_path
+        self.processor = ImageProcessor()
+        
+        # 编辑参数
+        self.scale = 1.0
+        self.offset_x = 0
+        self.offset_y = 0
+        self.rotation = 0
+        
+        # 获取最佳初始缩放
+        self.reset_to_optimal()
+    
+    def reset_to_optimal(self):
+        """重置到最佳参数"""
+        self.scale = self.processor.get_optimal_scale(self.image_path)
+        self.offset_x = 0
+        self.offset_y = 0
+        self.rotation = 0
+    
+    def set_scale(self, scale):
+        """设置缩放比例"""
+        self.scale = max(0.1, min(5.0, scale))  # 限制缩放范围
+    
+    def set_offset(self, offset_x, offset_y):
+        """设置偏移"""
+        max_x, max_y = self.processor.get_max_offset_range(self.image_path, self.scale)
+        self.offset_x = max(-max_x, min(max_x, offset_x))
+        self.offset_y = max(-max_y, min(max_y, offset_y))
+    
+    def set_rotation(self, rotation):
+        """设置旋转角度"""
+        self.rotation = rotation % 360
+    
+    def get_preview(self, preview_size=200):
+        """获取当前参数的预览图片"""
+        return self.processor.create_preview_image(
+            self.image_path, self.scale, self.offset_x, self.offset_y, self.rotation, preview_size
+        )
+    
+    def get_final_image(self):
+        """获取最终的圆形图片"""
+        return self.processor.create_circular_crop(
+            self.image_path, self.scale, self.offset_x, self.offset_y, self.rotation
+        )

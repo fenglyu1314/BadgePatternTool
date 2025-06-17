@@ -1,0 +1,15 @@
+# BadgePatternTool 依赖包
+# GUI框架
+tkinter  # Python内置，无需安装
+
+# 图像处理
+Pillow>=10.0.0
+
+# PDF生成
+reportlab>=4.0.0
+
+# 打包工具（开发时使用）
+pyinstaller>=5.0.0
+
+# 其他工具库
+numpy>=1.24.0  # 数学计算支持
