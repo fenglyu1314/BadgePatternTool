@@ -101,6 +101,20 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(f"{APP_TITLE} v{APP_VERSION}")
         self.setGeometry(100, 100, WINDOW_WIDTH, WINDOW_HEIGHT)
 
+        # 设置窗口图标
+        try:
+            icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "icon.ico")
+            if os.path.exists(icon_path):
+                icon = QIcon(icon_path)
+                if not icon.isNull():
+                    self.setWindowIcon(icon)
+                else:
+                    print(f"警告: 图标文件无效 {icon_path}")
+            else:
+                print(f"警告: 找不到图标文件 {icon_path}")
+        except Exception as e:
+            print(f"设置窗口图标失败: {e}")
+
         # 设置窗口居中
         screen = self.screen().availableGeometry()
         x = (screen.width() - WINDOW_WIDTH) // 2
@@ -235,10 +249,21 @@ class MainWindow(QMainWindow):
         self.image_listbox.setSpacing(2)  # 设置项目间距
         self.image_listbox.setUniformItemSizes(True)  # 统一项目大小
 
+        # 启用拖拽功能
+        self.image_listbox.setAcceptDrops(True)
+        self.image_listbox.setDragDropMode(QListWidget.DropOnly)
+
+        # 重写拖拽事件处理
+        self.setup_drag_drop()
+
         layout.addWidget(self.image_listbox)
 
         # 操作按钮
         btn_layout = QHBoxLayout()
+
+        copy_btn = QPushButton("复制")
+        copy_btn.clicked.connect(self.copy_selected)
+        btn_layout.addWidget(copy_btn)
 
         delete_btn = QPushButton("删除")
         delete_btn.clicked.connect(self.delete_selected)
@@ -544,6 +569,66 @@ class MainWindow(QMainWindow):
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("就绪")
+
+    def setup_drag_drop(self):
+        """设置拖拽功能"""
+        # 保存原始的拖拽事件处理方法
+        original_dragEnterEvent = self.image_listbox.dragEnterEvent
+        original_dragMoveEvent = self.image_listbox.dragMoveEvent
+        original_dropEvent = self.image_listbox.dropEvent
+
+        def dragEnterEvent(event):
+            """拖拽进入事件"""
+            if event.mimeData().hasUrls():
+                # 检查是否包含图片文件
+                urls = event.mimeData().urls()
+                has_images = False
+                for url in urls:
+                    if url.isLocalFile():
+                        file_path = url.toLocalFile()
+                        if self.file_handler.validate_image_file(file_path):
+                            has_images = True
+                            break
+
+                if has_images:
+                    event.acceptProposedAction()
+                    return
+
+            event.ignore()
+
+        def dragMoveEvent(event):
+            """拖拽移动事件"""
+            if event.mimeData().hasUrls():
+                event.acceptProposedAction()
+            else:
+                event.ignore()
+
+        def dropEvent(event):
+            """拖拽放下事件"""
+            if event.mimeData().hasUrls():
+                urls = event.mimeData().urls()
+                file_paths = []
+
+                for url in urls:
+                    if url.isLocalFile():
+                        file_path = url.toLocalFile()
+                        if self.file_handler.validate_image_file(file_path):
+                            file_paths.append(file_path)
+
+                if file_paths:
+                    # 使用现有的导入逻辑处理文件
+                    self.import_files_from_paths(file_paths)
+                    event.acceptProposedAction()
+                else:
+                    QMessageBox.warning(self, "拖拽导入", "没有找到有效的图片文件")
+                    event.ignore()
+            else:
+                event.ignore()
+
+        # 替换事件处理方法
+        self.image_listbox.dragEnterEvent = dragEnterEvent
+        self.image_listbox.dragMoveEvent = dragMoveEvent
+        self.image_listbox.dropEvent = dropEvent
         
     # 事件处理方法
     def import_images(self):
@@ -569,10 +654,7 @@ class MainWindow(QMainWindow):
             added_count = 0
             for file_path in file_paths:
                 try:
-                    # 检查是否已存在
-                    if any(item.file_path == file_path for item in self.image_items):
-                        continue
-
+                    # 移除重复检查，允许同一文件多次导入
                     # 创建图片项
                     image_item = ImageItem(file_path)
                     self.image_items.append(image_item)
@@ -636,6 +718,66 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             print(f"自动处理图片失败: {e}")
+
+    def import_files_from_paths(self, file_paths):
+        """从文件路径列表导入图片（用于拖拽导入）"""
+        try:
+            if not file_paths:
+                return
+
+            # 检查图片数量限制
+            total_count = len(self.image_items) + len(file_paths)
+            if total_count > MAX_IMAGE_COUNT:
+                QMessageBox.warning(
+                    self,
+                    "数量限制",
+                    f"最多只能导入{MAX_IMAGE_COUNT}张图片，当前已有{len(self.image_items)}张"
+                )
+                return
+
+            # 添加图片到列表
+            added_count = 0
+            for file_path in file_paths:
+                try:
+                    # 创建图片项
+                    image_item = ImageItem(file_path)
+                    self.image_items.append(image_item)
+
+                    # 添加到界面列表（带缩略图）
+                    self.add_image_item_to_list(image_item)
+
+                    added_count += 1
+
+                except Exception as e:
+                    print(f"添加图片失败 {file_path}: {e}")
+                    continue
+
+            # 更新状态
+            if added_count > 0:
+                self.status_bar.showMessage(f"拖拽导入成功 {added_count} 张图片，总计 {len(self.image_items)} 张")
+                # 选中最后一个添加的项
+                if self.image_items:
+                    last_index = len(self.image_items) - 1
+                    self.image_listbox.setCurrentRow(last_index)
+
+                # 自动处理新导入的图片（应用最佳参数）
+                self.auto_process_new_images()
+
+                # 重新加载当前选中的编辑器（因为缩放值已更新）
+                if self.current_selection:
+                    self.load_image_editor()
+
+                # 更新A4排版预览
+                self.update_layout_preview()
+
+                # 延迟适应窗口（确保预览图片已加载）
+                QTimer.singleShot(200, self.fit_preview_to_window)
+            else:
+                self.status_bar.showMessage("没有新图片被添加")
+
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"拖拽导入图片时发生错误：{str(e)}")
+            self.status_bar.showMessage("拖拽导入失败")
 
     def export_pdf(self):
         """导出PDF"""
@@ -770,6 +912,37 @@ class MainWindow(QMainWindow):
                 self.current_editor = None
                 self.status_bar.showMessage("已清空图片列表")
         
+    def copy_selected(self):
+        """复制选中项"""
+        current_row = self.image_listbox.currentRow()
+        if current_row >= 0 and current_row < len(self.image_items):
+            try:
+                # 获取选中的图片项
+                selected_item = self.image_items[current_row]
+
+                # 创建副本
+                copied_item = selected_item.copy()
+
+                # 插入到选中项的下一位
+                insert_index = current_row + 1
+                self.image_items.insert(insert_index, copied_item)
+
+                # 更新界面列表显示
+                self.update_image_list_display()
+
+                # 选中新复制的项
+                self.image_listbox.setCurrentRow(insert_index)
+
+                # 更新预览
+                self.update_layout_preview()
+
+                self.status_bar.showMessage(f"已复制: {copied_item.get_display_name()}")
+
+            except Exception as e:
+                QMessageBox.critical(self, "错误", f"复制图片失败：{str(e)}")
+        else:
+            QMessageBox.warning(self, "提示", "请先选择要复制的图片")
+
     def delete_selected(self):
         """删除选中项"""
         current_row = self.image_listbox.currentRow()

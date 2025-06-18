@@ -6,6 +6,7 @@ BadgePatternTool 主程序入口
 import sys
 import os
 from PySide6.QtWidgets import QApplication, QMessageBox
+from PySide6.QtGui import QIcon
 
 # 添加src目录到Python路径
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -20,6 +21,20 @@ def main():
         app = QApplication(sys.argv)
         app.setApplicationName(APP_NAME)
         app.setApplicationVersion(APP_VERSION)
+
+        # 设置应用程序图标（用于任务栏）
+        try:
+            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "icon.ico")
+            if os.path.exists(icon_path):
+                icon = QIcon(icon_path)
+                if not icon.isNull():
+                    app.setWindowIcon(icon)
+                else:
+                    print(f"警告: 图标文件无效 {icon_path}")
+            else:
+                print(f"警告: 找不到应用程序图标文件 {icon_path}")
+        except Exception as e:
+            print(f"设置应用程序图标失败: {e}")
 
         # 设置应用程序属性（PySide6中这些属性已默认启用）
         # app.setAttribute(Qt.AA_EnableHighDpiScaling, True)  # 已弃用

@@ -5,6 +5,7 @@
 
 import os
 import sys
+import uuid
 from PIL import Image
 
 # 添加父目录到路径
@@ -170,13 +171,25 @@ class FileHandler:
 
 class ImageItem:
     """图片项目类，用于管理单个图片的信息和状态"""
-    
+
+    # 类变量：用于跟踪同一文件的实例数量
+    _file_instance_counters = {}
+
     def __init__(self, file_path):
         self.file_path = file_path
         self.filename = os.path.basename(file_path)
         self.thumbnail = None
         self.info = None
         self.is_processed = False
+
+        # 生成唯一标识
+        self.unique_id = str(uuid.uuid4())
+
+        # 为同一文件分配实例序号
+        if file_path not in ImageItem._file_instance_counters:
+            ImageItem._file_instance_counters[file_path] = 0
+        ImageItem._file_instance_counters[file_path] += 1
+        self.instance_number = ImageItem._file_instance_counters[file_path]
 
         # 编辑参数
         self.scale = 1.0      # 缩放比例
@@ -204,6 +217,10 @@ class ImageItem:
     
     def get_display_name(self):
         """获取显示名称"""
+        # 如果同一文件有多个实例，显示序号
+        if ImageItem._file_instance_counters.get(self.file_path, 1) > 1:
+            name, ext = os.path.splitext(self.filename)
+            return f"{name}#{self.instance_number}{ext}"
         return self.filename
     
     def get_size_text(self):
@@ -231,3 +248,18 @@ class ImageItem:
         self.offset_y = 0
         self.rotation = 0
         self.is_processed = False
+
+    def copy(self):
+        """创建当前图片项的副本"""
+        # 创建新的ImageItem实例
+        new_item = ImageItem(self.file_path)
+
+        # 复制编辑参数
+        new_item.scale = self.scale
+        new_item.offset_x = self.offset_x
+        new_item.offset_y = self.offset_y
+        new_item.rotation = self.rotation
+        new_item.quantity = self.quantity
+        new_item.is_processed = self.is_processed
+
+        return new_item
