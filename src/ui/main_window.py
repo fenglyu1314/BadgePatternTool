@@ -61,6 +61,10 @@ class MainWindow(QMainWindow):
         # 初始化防抖定时器
         self.setup_debounce_timers()
 
+        # A4预览缓存状态
+        self._last_preview_hash = None
+        self._preview_cache_valid = False
+
         # 设置配置监听器
         app_config.add_listener(self.on_config_changed)
 
@@ -92,9 +96,10 @@ class MainWindow(QMainWindow):
         self.list_update_timer.setSingleShot(True)
         self.list_update_timer.timeout.connect(self.delayed_update_image_list)
 
-        # 防抖延迟时间（毫秒）
-        self.debounce_delay = 150  # 150ms延迟，平衡响应性和性能
-        self.layout_debounce_delay = 300  # 布局预览使用更长的延迟
+        # 防抖延迟时间（毫秒）- 优化性能
+        self.debounce_delay = 100  # 减少到100ms，提高响应性
+        self.layout_debounce_delay = 500  # 增加到500ms，减少A4预览的频繁更新
+        self.quantity_debounce_delay = 800  # 数量变化使用更长延迟，避免频繁重建预览
 
     def setup_window(self):
         """设置窗口基本属性"""
@@ -668,6 +673,9 @@ class MainWindow(QMainWindow):
                     print(f"添加图片失败 {file_path}: {e}")
                     continue
 
+            # 清除预览缓存
+            self._preview_cache_valid = False
+
             # 更新状态
             if added_count > 0:
                 self.status_bar.showMessage(f"成功导入 {added_count} 张图片，总计 {len(self.image_items)} 张")
@@ -954,6 +962,10 @@ class MainWindow(QMainWindow):
             # 清除选择
             self.current_selection = None
             self.current_editor = None
+
+            # 清除预览缓存
+            self._preview_cache_valid = False
+
             self.status_bar.showMessage(f"已删除: {deleted_item.get_display_name()}")
 
             # 如果还有项目，选中相邻的项
@@ -1076,11 +1088,16 @@ class MainWindow(QMainWindow):
         """缩放改变事件（带防抖）"""
         if self.current_editor:
             scale = value / 100.0  # 转换为0.1-3.0范围
+
+            # 避免重复处理相同的值
+            if abs(self.scale_value - scale) < 0.01:
+                return
+
             self.scale_value = scale
             self.scale_label.setText(f"图片缩放: {scale:.1f}")
             self.current_editor.set_scale(scale)
 
-            # 同步到交互式编辑器
+            # 同步到交互式编辑器（立即更新，因为有缓存优化）
             if hasattr(self, 'interactive_editor') and self.interactive_editor.original_image:
                 self.interactive_editor.image_scale = scale
                 self.interactive_editor.update()
@@ -1095,6 +1112,10 @@ class MainWindow(QMainWindow):
             offset_x = self.offset_x_slider.value()
             offset_y = self.offset_y_slider.value()
 
+            # 避免重复处理相同的值
+            if self.offset_x_value == offset_x and self.offset_y_value == offset_y:
+                return
+
             self.offset_x_value = offset_x
             self.offset_y_value = offset_y
 
@@ -1103,7 +1124,7 @@ class MainWindow(QMainWindow):
 
             self.current_editor.set_offset(offset_x, offset_y)
 
-            # 同步到交互式编辑器
+            # 同步到交互式编辑器（立即更新，位置变化不影响缓存）
             if hasattr(self, 'interactive_editor') and self.interactive_editor.original_image:
                 self.interactive_editor.image_offset = QPoint(offset_x, offset_y)
                 self.interactive_editor.update()
@@ -1195,9 +1216,38 @@ class MainWindow(QMainWindow):
                 expanded_list.append(image_item)
         return expanded_list
 
+    def _calculate_preview_hash(self):
+        """计算当前预览状态的哈希值，用于判断是否需要重新生成预览"""
+        import hashlib
+
+        # 收集影响预览的所有参数
+        hash_data = []
+
+        # 布局参数
+        hash_data.append(f"layout:{self.layout_mode}")
+        hash_data.append(f"spacing:{self.spacing_value}")
+        hash_data.append(f"margin:{self.margin_value}")
+        hash_data.append(f"preview_scale:{self.preview_scale_value}")
+
+        # 图片参数
+        for item in self.image_items:
+            hash_data.append(f"img:{item.file_path}:{item.quantity}:{item.scale}:{item.offset_x}:{item.offset_y}")
+
+        # 计算哈希
+        hash_string = "|".join(hash_data)
+        return hashlib.md5(hash_string.encode()).hexdigest()
+
     def update_layout_preview(self):
-        """更新A4排版预览"""
+        """更新A4排版预览（带缓存优化）"""
         try:
+            # 计算当前状态哈希
+            current_hash = self._calculate_preview_hash()
+
+            # 检查是否需要重新生成预览
+            if self._preview_cache_valid and current_hash == self._last_preview_hash:
+                # 缓存有效，无需重新生成
+                return
+
             # 获取当前设置
             layout_type = self.layout_mode
             spacing_mm = self.spacing_value
@@ -1231,9 +1281,14 @@ class MainWindow(QMainWindow):
 
             self.layout_info_label.setText(info_text)
 
+            # 更新缓存状态
+            self._last_preview_hash = current_hash
+            self._preview_cache_valid = True
+
         except Exception as e:
             print(f"更新排版预览失败: {e}")
             self.show_layout_hint()
+            self._preview_cache_valid = False
 
     def auto_layout(self):
         """自动排版（为所有图片应用最佳参数）"""
@@ -1278,9 +1333,9 @@ class MainWindow(QMainWindow):
             # 立即更新列表显示（轻量级操作）
             self.update_current_item_display()
 
-            # 使用较长延迟更新布局预览（重量级操作）
+            # 使用专门的数量变化延迟更新布局预览（重量级操作）
             self.layout_preview_timer.stop()
-            self.layout_preview_timer.start(self.layout_debounce_delay)
+            self.layout_preview_timer.start(self.quantity_debounce_delay)
 
     def set_quantity(self, quantity):
         """设置数量"""
@@ -1511,20 +1566,24 @@ class MainWindow(QMainWindow):
 
             # 将PIL图片保存到字节流
             buffer = BytesIO()
-            # 如果是RGBA模式，转换为RGB
-            if pil_image.mode == 'RGBA':
-                # 创建白色背景
-                background = Image.new('RGB', pil_image.size, (255, 255, 255))
-                background.paste(pil_image, mask=pil_image.split()[-1])  # 使用alpha通道作为遮罩
-                pil_image = background
+            try:
+                # 如果是RGBA模式，转换为RGB
+                if pil_image.mode == 'RGBA':
+                    # 创建白色背景
+                    background = Image.new('RGB', pil_image.size, (255, 255, 255))
+                    background.paste(pil_image, mask=pil_image.split()[-1])  # 使用alpha通道作为遮罩
+                    pil_image = background
 
-            pil_image.save(buffer, format='PNG')
-            buffer.seek(0)
+                pil_image.save(buffer, format='PNG')
+                buffer.seek(0)
 
-            # 从字节流创建QPixmap
-            pixmap = QPixmap()
-            pixmap.loadFromData(buffer.getvalue())
-            return pixmap
+                # 从字节流创建QPixmap
+                pixmap = QPixmap()
+                pixmap.loadFromData(buffer.getvalue())
+                return pixmap
+            finally:
+                # 确保释放内存
+                buffer.close()
 
         except Exception as e:
             print(f"PIL到QPixmap转换失败: {e}")

@@ -24,7 +24,10 @@ class ImageProcessor:
     """图片处理器类"""
     
     def __init__(self):
-        pass
+        # 图片处理缓存
+        self._crop_cache = {}
+        self._preview_cache = {}
+        self._max_cache_size = 50  # 最大缓存数量
 
     @property
     def badge_diameter_px(self):
@@ -35,10 +38,21 @@ class ImageProcessor:
     def badge_radius_px(self):
         """获取当前圆形半径（像素）"""
         return app_config.badge_radius_px
-        
+
+    def _manage_cache(self, cache_dict):
+        """管理缓存大小，防止内存过度使用"""
+        if len(cache_dict) > self._max_cache_size:
+            # 删除最旧的缓存项（简单的LRU策略）
+            oldest_key = next(iter(cache_dict))
+            del cache_dict[oldest_key]
+
+    def _get_cache_key(self, image_path, scale, offset_x, offset_y, rotation, extra=""):
+        """生成缓存键"""
+        return f"{image_path}:{scale}:{offset_x}:{offset_y}:{rotation}:{extra}"
+
     def create_circular_crop(self, image_path, scale=1.0, offset_x=0, offset_y=0, rotation=0):
         """
-        创建圆形裁剪
+        创建圆形裁剪（带缓存优化）
         参数:
             image_path: 图片路径
             scale: 缩放比例 (1.0 = 原始大小)
@@ -47,6 +61,11 @@ class ImageProcessor:
             rotation: 旋转角度 (度)
         返回: PIL.Image - 裁剪后的圆形图片
         """
+        # 检查缓存
+        cache_key = self._get_cache_key(image_path, scale, offset_x, offset_y, rotation)
+        if cache_key in self._crop_cache:
+            return self._crop_cache[cache_key].copy()  # 返回副本避免修改缓存
+
         try:
             # 打开原始图片
             with Image.open(image_path) as original_img:
@@ -69,7 +88,11 @@ class ImageProcessor:
                 
                 # 创建圆形裁剪区域
                 circle_img = self._crop_to_circle(original_img, offset_x, offset_y)
-                
+
+                # 缓存结果
+                self._manage_cache(self._crop_cache)
+                self._crop_cache[cache_key] = circle_img.copy()
+
                 return circle_img
                 
         except Exception as e:
@@ -134,7 +157,7 @@ class ImageProcessor:
     
     def create_preview_image(self, image_path, scale=1.0, offset_x=0, offset_y=0, rotation=0, preview_size=200):
         """
-        创建预览图片（用于界面显示）
+        创建预览图片（用于界面显示，带缓存优化）
         参数:
             image_path: 图片路径
             scale: 缩放比例
@@ -147,6 +170,11 @@ class ImageProcessor:
         if not PYSIDE6_AVAILABLE:
             print("PySide6不可用，无法创建预览图片")
             return None
+
+        # 检查预览缓存
+        cache_key = self._get_cache_key(image_path, scale, offset_x, offset_y, rotation, f"preview_{preview_size}")
+        if cache_key in self._preview_cache:
+            return self._preview_cache[cache_key]
 
         try:
             # 创建圆形裁剪
@@ -163,6 +191,11 @@ class ImageProcessor:
 
             pixmap = QPixmap()
             pixmap.loadFromData(buffer.getvalue())
+
+            # 缓存预览结果
+            self._manage_cache(self._preview_cache)
+            self._preview_cache[cache_key] = pixmap
+
             return pixmap
 
         except Exception as e:

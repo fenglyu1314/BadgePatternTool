@@ -155,12 +155,17 @@ class FileHandler:
 
                 # 转换为QPixmap
                 buffer = BytesIO()
-                thumbnail.save(buffer, format='PNG')
-                buffer.seek(0)
+                try:
+                    thumbnail.save(buffer, format='PNG')
+                    buffer.seek(0)
 
-                pixmap = QPixmap()
-                pixmap.loadFromData(buffer.getvalue())
-                return pixmap
+                    pixmap = QPixmap()
+                    pixmap.loadFromData(buffer.getvalue())
+                    return pixmap
+                finally:
+                    # 确保释放内存
+                    buffer.close()
+                    del thumbnail
 
         except Exception as e:
             # 创建错误占位图

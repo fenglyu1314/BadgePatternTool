@@ -262,22 +262,36 @@ class LayoutEngine:
 
             # 放置圆形图片
             positions = layout['positions']
+
+            # 创建图片处理器（复用实例）
+            from core.image_processor import ImageProcessor
+            processor = ImageProcessor()
+
+            # 图片缓存字典，避免重复处理相同参数的图片
+            image_cache = {}
+
             for i, image_item in enumerate(image_items):
                 if i >= len(positions):
                     break  # 超出可放置数量
 
                 try:
-                    # 获取圆形图片
-                    from core.image_processor import ImageProcessor
-                    processor = ImageProcessor()
+                    # 创建缓存键
+                    cache_key = f"{image_item.file_path}:{image_item.scale}:{image_item.offset_x}:{image_item.offset_y}:{image_item.rotation}"
 
-                    circle_img = processor.create_circular_crop(
-                        image_item.file_path,
-                        image_item.scale,
-                        image_item.offset_x,
-                        image_item.offset_y,
-                        image_item.rotation
-                    )
+                    # 检查缓存
+                    if cache_key in image_cache:
+                        circle_img = image_cache[cache_key]
+                    else:
+                        # 获取圆形图片
+                        circle_img = processor.create_circular_crop(
+                            image_item.file_path,
+                            image_item.scale,
+                            image_item.offset_x,
+                            image_item.offset_y,
+                            image_item.rotation
+                        )
+                        # 缓存结果
+                        image_cache[cache_key] = circle_img
 
                     # 计算粘贴位置（圆心位置转换为左上角位置）
                     center_x, center_y = positions[i]

@@ -18,30 +18,36 @@ from utils.config import app_config
 
 class InteractiveImageEditor(QLabel):
     """交互式图片编辑器"""
-    
+
     # 参数改变信号
     parameters_changed = Signal(float, int, int)  # scale, offset_x, offset_y
-    
+
     def __init__(self):
         super().__init__()
-        
+
         # 图片相关
         self.original_image = None  # PIL Image对象
         self.image_path = None
-        
+
         # 编辑参数
         self.image_scale = 1.0  # 图片缩放比例
         self.image_offset = QPoint(0, 0)  # 图片偏移
         self.min_scale = 0.1
         self.max_scale = 5.0
-        
+
         # 圆形遮罩参数 - 使用配置中的徽章尺寸
         self.update_mask_radius()
-        
+
         # 交互状态
         self.dragging = False
         self.last_drag_point = QPoint()
-        
+
+        # 图片缓存 - 性能优化
+        self._cached_pixmap = None
+        self._cache_scale = None
+        self._cache_size = None
+        self._cache_valid = False
+
         # 设置基本属性
         self.setMinimumSize(300, 300)
         self.setStyleSheet("""
@@ -51,7 +57,7 @@ class InteractiveImageEditor(QLabel):
                 border-radius: 4px;
             }
         """)
-        
+
         # 启用鼠标跟踪
         self.setMouseTracking(True)
 
@@ -94,6 +100,9 @@ class InteractiveImageEditor(QLabel):
             # 重置偏移
             self.image_offset = QPoint(0, 0)
 
+            # 清除缓存
+            self._invalidate_cache()
+
             # 更新显示
             self.update()
 
@@ -106,6 +115,7 @@ class InteractiveImageEditor(QLabel):
             print(f"加载图片失败: {e}")
             self.original_image = None
             self.image_path = None
+            self._invalidate_cache()
             self.update()
             return False
     
@@ -130,6 +140,33 @@ class InteractiveImageEditor(QLabel):
 
         # 限制缩放范围
         self.image_scale = max(self.min_scale, min(self.max_scale, self.image_scale))
+
+    def _invalidate_cache(self):
+        """清除图片缓存"""
+        # 显式删除QPixmap以释放内存
+        if self._cached_pixmap:
+            del self._cached_pixmap
+        self._cached_pixmap = None
+        self._cache_scale = None
+        self._cache_size = None
+        self._cache_valid = False
+
+    def _is_cache_valid(self):
+        """检查缓存是否有效"""
+        if not self._cache_valid or not self._cached_pixmap:
+            return False
+
+        # 检查缩放比例是否改变
+        if self._cache_scale != self.image_scale:
+            return False
+
+        # 检查图片尺寸是否改变
+        if self.original_image:
+            current_size = self.original_image.size
+            if self._cache_size != current_size:
+                return False
+
+        return True
     
     def get_image_rect(self):
         """获取当前图片的显示矩形"""
@@ -212,31 +249,47 @@ class InteractiveImageEditor(QLabel):
         painter.end()
     
     def create_image_pixmap(self):
-        """创建图片的QPixmap"""
+        """创建图片的QPixmap（带缓存优化）"""
         if not self.original_image:
             return None
-        
+
+        # 检查缓存是否有效
+        if self._is_cache_valid():
+            return self._cached_pixmap
+
         try:
             # 计算缩放后的尺寸
             img_width, img_height = self.original_image.size
             scaled_width = int(img_width * self.image_scale)
             scaled_height = int(img_height * self.image_scale)
-            
+
             # 缩放图片
             scaled_image = self.original_image.resize(
-                (scaled_width, scaled_height), 
+                (scaled_width, scaled_height),
                 Image.Resampling.LANCZOS
             )
-            
+
             # 转换为QPixmap
             buffer = BytesIO()
-            scaled_image.save(buffer, format='PNG')
-            buffer.seek(0)
-            
-            pixmap = QPixmap()
-            pixmap.loadFromData(buffer.getvalue())
-            return pixmap
-            
+            try:
+                scaled_image.save(buffer, format='PNG')
+                buffer.seek(0)
+
+                pixmap = QPixmap()
+                pixmap.loadFromData(buffer.getvalue())
+
+                # 更新缓存
+                self._cached_pixmap = pixmap
+                self._cache_scale = self.image_scale
+                self._cache_size = self.original_image.size
+                self._cache_valid = True
+
+                return pixmap
+            finally:
+                # 确保释放内存
+                buffer.close()
+                del scaled_image
+
         except Exception as e:
             print(f"创建图片pixmap失败: {e}")
             return None
@@ -327,6 +380,7 @@ class InteractiveImageEditor(QLabel):
         
         if new_scale != self.image_scale:
             self.image_scale = new_scale
+            self._invalidate_cache()  # 清除缓存
             self.update()
             self.emit_parameters_changed()
         
@@ -382,8 +436,14 @@ class InteractiveImageEditor(QLabel):
     
     def set_parameters(self, scale, offset_x, offset_y):
         """设置编辑参数"""
+        old_scale = self.image_scale
         self.image_scale = max(self.min_scale, min(self.max_scale, scale))
         self.image_offset = QPoint(offset_x, offset_y)
+
+        # 只有缩放改变时才清除缓存
+        if old_scale != self.image_scale:
+            self._invalidate_cache()
+
         self.update()
     
     def reset_view(self):
