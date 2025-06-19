@@ -48,6 +48,13 @@ class InteractiveImageEditor(QLabel):
         self._cache_size = None
         self._cache_valid = False
 
+        # 缩放防抖定时器
+        from PySide6.QtCore import QTimer
+        self._scale_timer = QTimer()
+        self._scale_timer.setSingleShot(True)
+        self._scale_timer.timeout.connect(self._delayed_scale_update)
+        self._pending_scale = None
+
         # 设置基本属性
         self.setMinimumSize(300, 300)
         self.setStyleSheet("""
@@ -191,9 +198,9 @@ class InteractiveImageEditor(QLabel):
         editor_center_x = self.width() // 2
         editor_center_y = self.height() // 2
 
-        # 偏移也需要按比例缩放
-        display_offset_x = int(self.image_offset.x() * self.display_to_actual_ratio) if hasattr(self, 'display_to_actual_ratio') else self.image_offset.x()
-        display_offset_y = int(self.image_offset.y() * self.display_to_actual_ratio) if hasattr(self, 'display_to_actual_ratio') else self.image_offset.y()
+        # 优化：偏移量直接使用，不进行比例缩放，确保拖动响应自然
+        display_offset_x = self.image_offset.x()
+        display_offset_y = self.image_offset.y()
 
         img_x = editor_center_x - display_scaled_width // 2 + display_offset_x
         img_y = editor_center_y - display_scaled_height // 2 + display_offset_y
@@ -365,26 +372,38 @@ class InteractiveImageEditor(QLabel):
         painter.restore()
     
     def wheelEvent(self, event: QWheelEvent):
-        """鼠标滚轮缩放"""
+        """鼠标滚轮缩放（优化性能，使用防抖）"""
         if not self.original_image:
             return
-        
+
         # 计算缩放因子
         delta = event.angleDelta().y()
         zoom_in = delta > 0
-        zoom_factor = 1.1 if zoom_in else 1.0 / 1.1
-        
+        zoom_factor = 1.05 if zoom_in else 1.0 / 1.05  # 减小缩放步长，更平滑
+
         # 应用缩放
         new_scale = self.image_scale * zoom_factor
         new_scale = max(self.min_scale, min(self.max_scale, new_scale))
-        
+
         if new_scale != self.image_scale:
             self.image_scale = new_scale
-            self._invalidate_cache()  # 清除缓存
+            self._pending_scale = new_scale
+
+            # 立即更新显示（使用旧缓存）
             self.update()
-            self.emit_parameters_changed()
-        
+
+            # 使用防抖定时器延迟更新缓存和信号
+            self._scale_timer.stop()
+            self._scale_timer.start(50)  # 50ms防抖延迟
+
         event.accept()
+
+    def _delayed_scale_update(self):
+        """延迟的缩放更新（清除缓存并发送信号）"""
+        if self._pending_scale is not None:
+            self._invalidate_cache()  # 清除缓存
+            self.emit_parameters_changed()
+            self._pending_scale = None
     
     def mousePressEvent(self, event: QMouseEvent):
         """鼠标按下事件"""
@@ -396,13 +415,26 @@ class InteractiveImageEditor(QLabel):
         super().mousePressEvent(event)
     
     def mouseMoveEvent(self, event: QMouseEvent):
-        """鼠标移动事件"""
+        """鼠标移动事件（优化拖动响应速度）"""
         if self.dragging and event.buttons() == Qt.LeftButton:
             # 计算拖拽偏移
             delta = event.pos() - self.last_drag_point
-            self.image_offset += delta
+
+            # 优化：增加拖动敏感度，根据显示比例调整
+            sensitivity_factor = 2.0  # 增加拖动敏感度
+            if hasattr(self, 'display_to_actual_ratio') and self.display_to_actual_ratio > 0:
+                # 根据显示比例调整敏感度，确保拖动距离合理
+                adjusted_delta = QPoint(
+                    int(delta.x() * sensitivity_factor / self.display_to_actual_ratio),
+                    int(delta.y() * sensitivity_factor / self.display_to_actual_ratio)
+                )
+            else:
+                adjusted_delta = delta * sensitivity_factor
+
+            self.image_offset += adjusted_delta
             self.last_drag_point = event.pos()
-            
+
+            # 立即更新显示（拖动不影响缓存）
             self.update()
             self.emit_parameters_changed()
         else:
@@ -411,7 +443,7 @@ class InteractiveImageEditor(QLabel):
                 self.setCursor(Qt.OpenHandCursor)
             else:
                 self.setCursor(Qt.ArrowCursor)
-        
+
         super().mouseMoveEvent(event)
     
     def mouseReleaseEvent(self, event: QMouseEvent):

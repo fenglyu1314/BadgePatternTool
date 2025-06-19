@@ -1059,30 +1059,32 @@ class MainWindow(QMainWindow):
             self.offset_y_label.setText(f"Y偏移: {self.current_editor.offset_y}")
 
     def on_editor_parameters_changed(self, scale, offset_x, offset_y):
-        """交互式编辑器参数改变事件"""
+        """交互式编辑器参数改变事件（优化性能）"""
         if self.current_editor:
             # 更新圆形编辑器参数
             self.current_editor.scale = scale
             self.current_editor.offset_x = offset_x
             self.current_editor.offset_y = offset_y
 
-            # 更新滑块（不触发信号）
-            self.scale_slider.blockSignals(True)
-            self.offset_x_slider.blockSignals(True)
-            self.offset_y_slider.blockSignals(True)
+            # 只有在值真正改变时才更新滑块
+            current_scale_value = int(scale * 100)
+            if self.scale_slider.value() != current_scale_value:
+                self.scale_slider.blockSignals(True)
+                self.scale_slider.setValue(current_scale_value)
+                self.scale_slider.blockSignals(False)
+                self.scale_label.setText(f"图片缩放: {scale:.1f}")
 
-            self.scale_slider.setValue(int(scale * 100))
-            self.offset_x_slider.setValue(offset_x)
-            self.offset_y_slider.setValue(offset_y)
+            if self.offset_x_slider.value() != offset_x:
+                self.offset_x_slider.blockSignals(True)
+                self.offset_x_slider.setValue(offset_x)
+                self.offset_x_slider.blockSignals(False)
+                self.offset_x_label.setText(f"X偏移: {offset_x}")
 
-            self.scale_slider.blockSignals(False)
-            self.offset_x_slider.blockSignals(False)
-            self.offset_y_slider.blockSignals(False)
-
-            # 更新标签
-            self.scale_label.setText(f"图片缩放: {scale:.1f}")
-            self.offset_x_label.setText(f"X偏移: {offset_x}")
-            self.offset_y_label.setText(f"Y偏移: {offset_y}")
+            if self.offset_y_slider.value() != offset_y:
+                self.offset_y_slider.blockSignals(True)
+                self.offset_y_slider.setValue(offset_y)
+                self.offset_y_slider.blockSignals(False)
+                self.offset_y_label.setText(f"Y偏移: {offset_y}")
 
     def on_scale_change(self, value):
         """缩放改变事件（带防抖）"""
