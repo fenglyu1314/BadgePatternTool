@@ -434,6 +434,55 @@ class LayoutEngine:
         blank_pixmap.fill()
         return blank_pixmap
     
+    def calculate_multi_page_layout(self, image_count, layout_type='grid',
+                                   spacing_mm=DEFAULT_SPACING, margin_mm=DEFAULT_MARGIN):
+        """
+        计算多页面布局
+        参数:
+            image_count: 需要排版的图片总数
+            layout_type: 布局类型 ('grid' 或 'compact')
+            spacing_mm: 间距（毫米）
+            margin_mm: 页边距（毫米）
+        返回: dict - 多页面布局信息
+        """
+        # 获取单页布局信息
+        if layout_type == 'grid':
+            single_page_layout = self.calculate_grid_layout(spacing_mm, margin_mm)
+        else:
+            single_page_layout = self.calculate_compact_layout(spacing_mm, margin_mm)
+
+        max_per_page = single_page_layout['max_count']
+
+        # 计算需要的页面数
+        total_pages = max(1, (image_count + max_per_page - 1) // max_per_page)
+
+        # 为每个页面生成布局信息
+        pages = []
+        remaining_images = image_count
+
+        for page_index in range(total_pages):
+            # 计算当前页面的图片数量
+            images_on_page = min(remaining_images, max_per_page)
+
+            # 复制单页布局信息
+            page_layout = single_page_layout.copy()
+            page_layout['page_index'] = page_index
+            page_layout['images_on_page'] = images_on_page
+            page_layout['total_pages'] = total_pages
+
+            pages.append(page_layout)
+            remaining_images -= images_on_page
+
+        return {
+            'type': layout_type,
+            'total_pages': total_pages,
+            'max_per_page': max_per_page,
+            'total_images': image_count,
+            'pages': pages,
+            'spacing_mm': spacing_mm,
+            'margin_mm': margin_mm
+        }
+
     def get_layout_info(self, layout_type='grid', spacing_mm=DEFAULT_SPACING, margin_mm=DEFAULT_MARGIN):
         """
         获取布局信息
@@ -447,7 +496,7 @@ class LayoutEngine:
             layout = self.calculate_grid_layout(spacing_mm, margin_mm)
         else:
             layout = self.calculate_compact_layout(spacing_mm, margin_mm)
-        
+
         return {
             'type': layout_type,
             'max_count': layout['max_count'],
@@ -455,3 +504,48 @@ class LayoutEngine:
             'spacing_mm': spacing_mm,
             'margin_mm': margin_mm
         }
+
+    def create_multi_page_preview(self, image_items, layout_type='grid',
+                                 spacing_mm=DEFAULT_SPACING, margin_mm=DEFAULT_MARGIN,
+                                 preview_scale=0.5):
+        """
+        创建多页面排版预览图片列表
+        参数:
+            image_items: 图片项目列表
+            layout_type: 布局类型 ('grid' 或 'compact')
+            spacing_mm: 间距（毫米）
+            margin_mm: 页边距（毫米）
+            preview_scale: 预览缩放比例
+        返回: list[QPixmap] - 每页的预览图片列表
+        """
+        if not PYSIDE6_AVAILABLE:
+            print("PySide6不可用，无法创建多页面排版预览")
+            return []
+
+        try:
+            # 计算多页面布局
+            multi_layout = self.calculate_multi_page_layout(
+                len(image_items), layout_type, spacing_mm, margin_mm
+            )
+
+            page_previews = []
+            image_index = 0
+
+            # 为每个页面生成预览
+            for page_info in multi_layout['pages']:
+                # 获取当前页面的图片
+                page_images = image_items[image_index:image_index + page_info['images_on_page']]
+
+                # 创建单页预览
+                page_preview = self.create_layout_preview(
+                    page_images, layout_type, spacing_mm, margin_mm, preview_scale
+                )
+
+                page_previews.append(page_preview)
+                image_index += page_info['images_on_page']
+
+            return page_previews
+
+        except Exception as e:
+            print(f"创建多页面排版预览失败: {e}")
+            return [self._create_blank_preview()]

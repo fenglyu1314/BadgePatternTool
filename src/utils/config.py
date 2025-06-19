@@ -13,6 +13,12 @@ DEFAULT_BADGE_DIAMETER_MM = 68  # 默认徽章直径
 A4_WIDTH_MM = 210      # A4纸宽度
 A4_HEIGHT_MM = 297     # A4纸高度
 
+# 布局配置（根据打印机测试结果调整）
+DEFAULT_SPACING_MM = 3     # 默认间距：3mm
+DEFAULT_MARGIN_MM = 6      # 默认页边距：6mm（基于5mm打印机限制+1mm安全余量）
+MIN_MARGIN_MM = 5          # 最小页边距：5mm（打印机硬件限制）
+MAX_MARGIN_MM = 30         # 最大页边距：30mm
+
 # DPI配置
 PRINT_DPI = 300        # 打印分辨率
 SCREEN_DPI = 96        # 屏幕显示分辨率
@@ -102,11 +108,11 @@ EXPORT_FORMATS = [
     ("JPEG文件", "*.jpg")
 ]
 
-# 默认设置
-DEFAULT_SPACING = 5        # 默认间距（mm）
-DEFAULT_MARGIN = 5         # 默认页边距（mm）
-DEFAULT_LAYOUT = "compact" # 默认布局模式：grid（网格）或 compact（紧密）
-DEFAULT_EXPORT_FORMAT = "PNG"  # 默认导出格式
+# 默认设置（根据打印机测试结果更新）
+DEFAULT_SPACING = DEFAULT_SPACING_MM  # 默认间距：3mm
+DEFAULT_MARGIN = DEFAULT_MARGIN_MM    # 默认页边距：6mm（基于5mm打印机限制+1mm安全余量）
+DEFAULT_LAYOUT = "compact"            # 默认布局模式：grid（网格）或 compact（紧密）
+DEFAULT_EXPORT_FORMAT = "PNG"        # 默认导出格式
 
 # 颜色配置
 COLORS = {

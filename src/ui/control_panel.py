@@ -107,7 +107,7 @@ class ControlPanel(QGroupBox):
         layout.addWidget(self.margin_label)
         
         self.margin_slider = QSlider(Qt.Horizontal)
-        self.margin_slider.setRange(0, 30)
+        self.margin_slider.setRange(5, 30)  # 最小5mm（打印机硬件限制），最大30mm
         self.margin_slider.setValue(int(self.margin_value))
         layout.addWidget(self.margin_slider)
     

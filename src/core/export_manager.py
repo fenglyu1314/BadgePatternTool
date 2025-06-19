@@ -33,95 +33,24 @@ class ExportManager:
         self.layout_engine = LayoutEngine()
         self.image_processor = ImageProcessor()
         
-    def export_to_pdf(self, image_items, output_path, layout_type='grid', 
+    def export_to_pdf(self, image_items, output_path, layout_type='grid',
                      spacing_mm=DEFAULT_SPACING, margin_mm=DEFAULT_MARGIN):
         """
-        导出为PDF文件
+        导出为PDF文件（自动支持多页面）
         参数:
             image_items: 图片项目列表
             output_path: 输出文件路径
             layout_type: 布局类型
             spacing_mm: 间距
             margin_mm: 页边距
-        返回: bool - 是否成功
+        返回: (bool, int) - (是否成功, 处理的图片数量)
         """
-        try:
-            # 计算布局
-            if layout_type == 'grid':
-                layout = self.layout_engine.calculate_grid_layout(spacing_mm, margin_mm)
-            else:
-                layout = self.layout_engine.calculate_compact_layout(spacing_mm, margin_mm)
-            
-            # 创建PDF画布
-            c = canvas.Canvas(output_path, pagesize=A4)
-
-            # 转换比例（从像素到points）
-            # 300 DPI: 1 inch = 300 pixels = 72 points
-            pixel_to_point = 72.0 / PRINT_DPI
-            
-            # 处理每个图片
-            positions = layout['positions']
-            processed_count = 0
-            
-            for i, image_item in enumerate(image_items):
-                if i >= len(positions):
-                    break  # 超出可放置数量
-                
-                try:
-                    # 获取圆形图片
-                    circle_img = self.image_processor.create_circular_crop(
-                        image_item.file_path,
-                        image_item.scale,
-                        image_item.offset_x,
-                        image_item.offset_y,
-                        image_item.rotation
-                    )
-                    
-                    # 保存临时图片文件
-                    temp_img_path = f"temp_circle_{i}.png"
-                    circle_img.save(temp_img_path, "PNG", dpi=(PRINT_DPI, PRINT_DPI))
-                    
-                    # 计算在PDF中的位置
-                    center_x_px, center_y_px = positions[i]
-                    
-                    # 转换坐标系（PDF坐标系原点在左下角）
-                    center_x_pt = center_x_px * pixel_to_point
-                    center_y_pt = (self.layout_engine.a4_height_px - center_y_px) * pixel_to_point
-                    
-                    # 计算图片左下角位置
-                    img_size_pt = self.layout_engine.badge_diameter_px * pixel_to_point
-                    x_pt = center_x_pt - img_size_pt / 2
-                    y_pt = center_y_pt - img_size_pt / 2
-                    
-                    # 在PDF中绘制图片
-                    c.drawImage(temp_img_path, x_pt, y_pt, 
-                              width=img_size_pt, height=img_size_pt)
-                    
-                    # 删除临时文件
-                    if os.path.exists(temp_img_path):
-                        os.remove(temp_img_path)
-                    
-                    processed_count += 1
-                    
-                except Exception as e:
-                    print(f"处理图片失败 {image_item.filename}: {e}")
-                    continue
-            
-            # 添加页面信息（可选）
-            self._add_page_info(c, processed_count, layout_type, spacing_mm, margin_mm)
-            
-            # 保存PDF
-            c.save()
-            
-            return True, processed_count
-            
-        except Exception as e:
-            print(f"PDF导出失败: {e}")
-            return False, 0
+        # 直接使用多页面导出功能
+        return self.export_multi_page_to_pdf(image_items, output_path, layout_type, spacing_mm, margin_mm)
     
     def export_to_image(self, image_items, output_path, config=None, **kwargs):
         """
-        导出为图片文件（PNG/JPG）
+        导出为图片文件（PNG/JPG，自动支持多页面）
         参数:
             image_items: 图片项目列表
             output_path: 输出文件路径
@@ -140,62 +69,17 @@ class ExportManager:
                 margin_mm=kwargs.get('margin_mm', DEFAULT_MARGIN),
                 format_type=kwargs.get('format_type', 'PNG')
             )
-        try:
-            # 计算布局
-            if export_config.layout_type == 'grid':
-                layout = self.layout_engine.calculate_grid_layout(export_config.spacing_mm, export_config.margin_mm)
-            else:
-                layout = self.layout_engine.calculate_compact_layout(export_config.spacing_mm, export_config.margin_mm)
-            
-            # 创建A4画布
-            canvas_img = Image.new('RGB', (self.layout_engine.a4_width_px, self.layout_engine.a4_height_px), (255, 255, 255))
-            
-            # 处理每个图片
-            positions = layout['positions']
-            processed_count = 0
-            
-            for i, image_item in enumerate(image_items):
-                if i >= len(positions):
-                    break
-                
-                try:
-                    # 获取圆形图片
-                    circle_img = self.image_processor.create_circular_crop(
-                        image_item.file_path,
-                        image_item.scale,
-                        image_item.offset_x,
-                        image_item.offset_y,
-                        image_item.rotation
-                    )
-                    
-                    # 计算粘贴位置
-                    center_x, center_y = positions[i]
-                    paste_x = center_x - self.layout_engine.badge_radius_px
-                    paste_y = center_y - self.layout_engine.badge_radius_px
-                    
-                    # 粘贴到画布（使用透明度遮罩）
-                    if circle_img.mode == 'RGBA':
-                        canvas_img.paste(circle_img, (paste_x, paste_y), circle_img)
-                    else:
-                        canvas_img.paste(circle_img, (paste_x, paste_y))
-                    
-                    processed_count += 1
-                    
-                except Exception as e:
-                    print(f"处理图片失败 {image_item.filename}: {e}")
-                    continue
-            
-            # 保存图片
-            if export_config.format_type.upper() == 'JPEG':
-                canvas_img.save(output_path, "JPEG", quality=95, dpi=(PRINT_DPI, PRINT_DPI))
-            else:
-                canvas_img.save(output_path, "PNG", dpi=(PRINT_DPI, PRINT_DPI))
-            
-            return True, processed_count
-            
-        except Exception as e:
-            print(f"图片导出失败: {e}")
-            return False, 0
+
+        # 移除文件扩展名以便多页面导出
+        base_path = output_path
+        if '.' in output_path:
+            base_path = output_path.rsplit('.', 1)[0]
+
+        # 使用多页面导出功能
+        return self.export_multi_page_to_images(
+            image_items, base_path, export_config.format_type,
+            export_config.layout_type, export_config.spacing_mm, export_config.margin_mm
+        )
     
     def _add_page_info(self, canvas_obj, image_count, layout_type, spacing_mm, margin_mm):
         """
@@ -276,3 +160,204 @@ class ExportManager:
             return False, f"无法写入文件: {str(e)}"
         
         return True, ""
+
+    def export_multi_page_to_pdf(self, image_items, output_path, layout_type='grid',
+                                spacing_mm=DEFAULT_SPACING, margin_mm=DEFAULT_MARGIN):
+        """
+        导出多页面PDF文件
+        参数:
+            image_items: 图片项目列表
+            output_path: 输出文件路径
+            layout_type: 布局类型
+            spacing_mm: 间距
+            margin_mm: 页边距
+        返回: (bool, int) - (是否成功, 处理的图片数量)
+        """
+        try:
+            # 计算多页面布局
+            multi_layout = self.layout_engine.calculate_multi_page_layout(
+                len(image_items), layout_type, spacing_mm, margin_mm
+            )
+
+            # 创建PDF文档
+            c = canvas.Canvas(output_path, pagesize=A4)
+
+            # 计算坐标转换比例
+            pixel_to_point = 72.0 / PRINT_DPI
+
+            total_processed = 0
+            image_index = 0
+
+            # 为每个页面生成内容
+            for page_info in multi_layout['pages']:
+                # 获取当前页面的图片
+                page_images = image_items[image_index:image_index + page_info['images_on_page']]
+                positions = page_info['positions']
+
+                # 处理当前页面的每个图片
+                for i, image_item in enumerate(page_images):
+                    if i >= len(positions):
+                        break  # 超出当前页面可放置数量
+
+                    try:
+                        # 获取圆形图片
+                        circle_img = self.image_processor.create_circular_crop(
+                            image_item.file_path,
+                            image_item.scale,
+                            image_item.offset_x,
+                            image_item.offset_y,
+                            image_item.rotation
+                        )
+
+                        # 保存临时图片文件
+                        temp_img_path = f"temp_circle_p{page_info['page_index']}_{i}.png"
+                        circle_img.save(temp_img_path, "PNG", dpi=(PRINT_DPI, PRINT_DPI))
+
+                        # 计算在PDF中的位置
+                        center_x_px, center_y_px = positions[i]
+
+                        # 转换坐标系（PDF坐标系原点在左下角）
+                        center_x_pt = center_x_px * pixel_to_point
+                        center_y_pt = (self.layout_engine.a4_height_px - center_y_px) * pixel_to_point
+
+                        # 计算图片左下角位置
+                        img_size_pt = self.layout_engine.badge_diameter_px * pixel_to_point
+                        x_pt = center_x_pt - img_size_pt / 2
+                        y_pt = center_y_pt - img_size_pt / 2
+
+                        # 在PDF中绘制图片
+                        c.drawImage(temp_img_path, x_pt, y_pt,
+                                  width=img_size_pt, height=img_size_pt)
+
+                        # 删除临时文件
+                        if os.path.exists(temp_img_path):
+                            os.remove(temp_img_path)
+
+                        total_processed += 1
+
+                    except Exception as e:
+                        print(f"处理图片失败 {image_item.filename}: {e}")
+                        continue
+
+                # 添加页面信息
+                self._add_multi_page_info(c, page_info, multi_layout, layout_type, spacing_mm, margin_mm)
+
+                # 更新图片索引
+                image_index += page_info['images_on_page']
+
+                # 如果不是最后一页，添加新页面
+                if page_info['page_index'] < multi_layout['total_pages'] - 1:
+                    c.showPage()
+
+            # 保存PDF
+            c.save()
+
+            return True, total_processed
+
+        except Exception as e:
+            print(f"导出多页面PDF失败: {e}")
+            return False, 0
+
+    def export_multi_page_to_images(self, image_items, output_path, format_type='PNG',
+                                   layout_type='grid', spacing_mm=DEFAULT_SPACING, margin_mm=DEFAULT_MARGIN):
+        """
+        导出多页面图片文件
+        参数:
+            image_items: 图片项目列表
+            output_path: 输出文件路径（不含扩展名）
+            format_type: 图片格式
+            layout_type: 布局类型
+            spacing_mm: 间距
+            margin_mm: 页边距
+        返回: (bool, int) - (是否成功, 处理的图片数量)
+        """
+        try:
+            # 计算多页面布局
+            multi_layout = self.layout_engine.calculate_multi_page_layout(
+                len(image_items), layout_type, spacing_mm, margin_mm
+            )
+
+            total_processed = 0
+            image_index = 0
+
+            # 为每个页面生成图片文件
+            for page_info in multi_layout['pages']:
+                # 获取当前页面的图片
+                page_images = image_items[image_index:image_index + page_info['images_on_page']]
+
+                # 创建A4画布
+                canvas_img = Image.new('RGB', (self.layout_engine.a4_width_px, self.layout_engine.a4_height_px), (255, 255, 255))
+
+                # 处理当前页面的每个图片
+                positions = page_info['positions']
+                for i, image_item in enumerate(page_images):
+                    if i >= len(positions):
+                        break
+
+                    try:
+                        # 获取圆形图片
+                        circle_img = self.image_processor.create_circular_crop(
+                            image_item.file_path,
+                            image_item.scale,
+                            image_item.offset_x,
+                            image_item.offset_y,
+                            image_item.rotation
+                        )
+
+                        # 计算粘贴位置
+                        center_x, center_y = positions[i]
+                        paste_x = center_x - self.layout_engine.badge_radius_px
+                        paste_y = center_y - self.layout_engine.badge_radius_px
+
+                        # 粘贴到画布
+                        if circle_img.mode == 'RGBA':
+                            canvas_img.paste(circle_img, (paste_x, paste_y), circle_img)
+                        else:
+                            canvas_img.paste(circle_img, (paste_x, paste_y))
+
+                        total_processed += 1
+
+                    except Exception as e:
+                        print(f"处理图片失败 {image_item.filename}: {e}")
+                        continue
+
+                # 生成页面文件名
+                if multi_layout['total_pages'] == 1:
+                    page_output_path = f"{output_path}.{format_type.lower()}"
+                else:
+                    page_output_path = f"{output_path}_第{page_info['page_index'] + 1}页.{format_type.lower()}"
+
+                # 保存页面图片
+                if format_type.upper() == 'JPEG':
+                    canvas_img.save(page_output_path, "JPEG", quality=95, dpi=(PRINT_DPI, PRINT_DPI))
+                else:
+                    canvas_img.save(page_output_path, "PNG", dpi=(PRINT_DPI, PRINT_DPI))
+
+                # 更新图片索引
+                image_index += page_info['images_on_page']
+
+            return True, total_processed
+
+        except Exception as e:
+            print(f"导出多页面图片失败: {e}")
+            return False, 0
+
+    def _add_multi_page_info(self, canvas_obj, page_info, multi_layout, layout_type, spacing_mm, margin_mm):
+        """
+        在多页面PDF中添加页面信息
+        """
+        try:
+            # 设置字体
+            canvas_obj.setFont("Helvetica", 8)
+
+            # 页面信息
+            page_text = f"第 {page_info['page_index'] + 1} 页 / 共 {multi_layout['total_pages']} 页"
+            info_text = f"BadgePatternTool | {page_text} | 本页图片: {page_info['images_on_page']} | " \
+                       f"Layout: {layout_type} | Spacing: {spacing_mm}mm | Margin: {margin_mm}mm | " \
+                       f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+
+            # 在页面底部绘制信息
+            canvas_obj.drawString(20, 20, info_text)
+
+        except Exception as e:
+            print(f"添加多页面信息失败: {e}")

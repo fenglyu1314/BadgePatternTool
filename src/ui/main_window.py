@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (
     QMessageBox, QStatusBar, QSplitter, QGroupBox,
     QSpacerItem, QSizePolicy
 )
-from PySide6.QtCore import Qt, QTimer, QSize, QPoint, QRect
+from PySide6.QtCore import Qt, QTimer, QSize, QPoint
 from PySide6.QtGui import QAction, QIcon, QPixmap, QPainter
 from PySide6.QtPrintSupport import QPrinter
 from PIL import Image
@@ -68,6 +68,9 @@ class MainWindow(QMainWindow):
         # A4预览缓存状态
         self._last_preview_hash = None
         self._preview_cache_valid = False
+
+        # 打印页面缓存（高分辨率版本）
+        self._cached_print_pages = []
 
         # 设置配置监听器
         app_config.add_listener(self.on_config_changed)
@@ -308,42 +311,40 @@ class MainWindow(QMainWindow):
 
     def create_a4_preview_panel(self, parent):
         """创建A4排版预览面板（第三列）"""
-        # A4预览面板框架
-        preview_frame = QGroupBox("A4排版预览")
+        # A4预览面板框架（使用更紧凑的标题）
+        preview_frame = QGroupBox("A4预览")
+        preview_frame.setStyleSheet("QGroupBox { font-size: 10px; font-weight: bold; padding-top: 10px; }")
         parent.addWidget(preview_frame)
 
         layout = QVBoxLayout(preview_frame)
+        layout.setContentsMargins(5, 5, 5, 5)  # 减少边距
+        layout.setSpacing(3)  # 减少间距
 
-        # 信息栏
+        # 紧凑的信息栏（单行）
         info_layout = QHBoxLayout()
+        info_layout.setContentsMargins(0, 0, 0, 0)
+        info_layout.setSpacing(5)
 
-        title_label = QLabel("A4排版预览")
-        title_label.setStyleSheet("font-weight: bold; font-size: 12px;")
-        info_layout.addWidget(title_label)
-
-        info_layout.addItem(QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum))
-
-        # 布局信息标签
-        self.layout_info_label = QLabel("")
-        self.layout_info_label.setStyleSheet("color: #666; font-size: 10px;")
+        # 布局信息标签（更紧凑）
+        self.layout_info_label = QLabel("每页可放置: 0个 | 当前: 0个")
+        self.layout_info_label.setStyleSheet("color: #666; font-size: 9px; padding: 2px;")
+        self.layout_info_label.setMaximumHeight(20)  # 限制高度
         info_layout.addWidget(self.layout_info_label)
+
+        info_layout.addStretch()  # 推到右边
 
         layout.addLayout(info_layout)
 
-        # 交互式滚动区域
-        self.interactive_scroll_area = InteractiveScrollArea()
-        # 设置最小尺寸以保持A4比例
-        # A4比例约为1:1.414，设置合适的最小尺寸
-        min_width = 350  # 最小宽度
-        min_height = int(min_width * 1.414)  # 按A4比例计算高度
-        self.interactive_scroll_area.setMinimumSize(min_width, min_height)
-        layout.addWidget(self.interactive_scroll_area)
+        # 多页面预览组件（占用大部分空间）
+        from ui.multi_page_preview_widget import MultiPagePreviewWidget
+        self.multi_page_preview = MultiPagePreviewWidget()
+        # 设置拉伸因子，让预览组件占用大部分空间
+        layout.addWidget(self.multi_page_preview, 1)  # 拉伸因子为1
 
-        # 获取内部的预览标签引用（为了兼容现有代码）
-        self.layout_preview_label = self.interactive_scroll_area.preview_label
-
-        # 视图控制按钮
+        # 视图控制按钮（放在预览区域下面）
         view_control_layout = QHBoxLayout()
+        view_control_layout.setContentsMargins(0, 0, 0, 0)
+        view_control_layout.setSpacing(5)
 
         fit_btn = QPushButton("适应窗口")
         fit_btn.clicked.connect(self.fit_preview_to_window)
@@ -358,6 +359,9 @@ class MainWindow(QMainWindow):
         view_control_layout.addWidget(refresh_btn)
 
         layout.addLayout(view_control_layout)
+
+        # 保持兼容性：创建一个虚拟的layout_preview_label
+        self.layout_preview_label = None  # 标记为多页面模式
 
     def create_control_panel(self, parent):
         """创建排版控制和导出面板（第四列）"""
@@ -412,7 +416,7 @@ class MainWindow(QMainWindow):
         margin_layout.addWidget(self.margin_label)
 
         self.margin_slider = QSlider(Qt.Horizontal)
-        self.margin_slider.setRange(0, 30)  # 允许0mm最小页边距
+        self.margin_slider.setRange(5, 30)  # 最小5mm（打印机限制），最大30mm
         self.margin_slider.setValue(int(self.margin_value))
         self.margin_slider.valueChanged.connect(self.on_margin_change)
         margin_layout.addWidget(self.margin_slider)
@@ -567,11 +571,6 @@ class MainWindow(QMainWindow):
         apply_btn = QPushButton("应用")
         apply_btn.clicked.connect(self.apply_edit)
         btn_layout.addWidget(apply_btn)
-
-        # 调试按钮（临时）
-        debug_btn = QPushButton("调试")
-        debug_btn.clicked.connect(self.debug_parameters)
-        btn_layout.addWidget(debug_btn)
 
         parent_layout.addLayout(btn_layout)
 
@@ -866,9 +865,13 @@ class MainWindow(QMainWindow):
                     expanded_images, output_path, layout_type, spacing_mm, margin_mm
                 )
             else:
+                # 使用kwargs方式传递参数给export_to_image
                 success, count = self.export_manager.export_to_image(
-                    expanded_images, output_path, format_type.upper(),
-                    layout_type, spacing_mm, margin_mm
+                    expanded_images, output_path,
+                    format_type=format_type.upper(),
+                    layout_type=layout_type,
+                    spacing_mm=spacing_mm,
+                    margin_mm=margin_mm
                 )
 
             if success:
@@ -1183,20 +1186,7 @@ class MainWindow(QMainWindow):
 
             QMessageBox.information(self, "提示", "编辑参数已保存，可在A4排版预览中查看效果")
 
-    def debug_parameters(self):
-        """调试参数转换"""
-        if hasattr(self, 'interactive_editor') and self.interactive_editor.original_image:
-            self.interactive_editor.debug_parameters()
 
-            # 同时显示当前选择的图片项参数
-            if self.current_selection:
-                print(f"=== 图片项参数 ===")
-                print(f"文件: {self.current_selection.filename}")
-                print(f"缩放: {self.current_selection.scale}")
-                print(f"偏移: ({self.current_selection.offset_x}, {self.current_selection.offset_y})")
-                print(f"================")
-        else:
-            print("没有加载的图片可以调试")
 
     def show_layout_hint(self):
         """显示排版提示"""
@@ -1229,9 +1219,10 @@ class MainWindow(QMainWindow):
         self.preview_scale_value = scale
         self.preview_scale_label.setText(f"预览缩放: {value}%")
 
-        # 同步到InteractiveScrollArea的缩放
-        if hasattr(self, 'interactive_scroll_area'):
-            self.interactive_scroll_area.preview_label.set_scale_factor(scale)
+        # 同步到多页面预览的缩放
+        if hasattr(self, 'multi_page_preview'):
+            # 注意：这里不需要同步，因为预览缩放是独立的
+            pass
 
         # 使用防抖定时器延迟更新布局预览
         self.layout_preview_timer.stop()
@@ -1267,7 +1258,7 @@ class MainWindow(QMainWindow):
         return hashlib.md5(hash_string.encode()).hexdigest()
 
     def update_layout_preview(self):
-        """更新A4排版预览（带缓存优化）"""
+        """更新A4排版预览（支持多页面）"""
         try:
             # 计算当前状态哈希
             current_hash = self._calculate_preview_hash()
@@ -1285,28 +1276,42 @@ class MainWindow(QMainWindow):
             # 获取展开后的图片列表
             expanded_images = self.get_expanded_image_list()
 
-            # 创建排版预览（即使没有图片也显示灰色圆形占位符）
-            preview_pixmap = self.layout_engine.create_layout_preview(
+            # 计算多页面布局
+            multi_layout = self.layout_engine.calculate_multi_page_layout(
+                len(expanded_images), layout_type, spacing_mm, margin_mm
+            )
+
+            # 创建多页面预览
+            page_previews = self.layout_engine.create_multi_page_preview(
                 expanded_images, layout_type, spacing_mm, margin_mm,
                 preview_scale=self.preview_scale_value
             )
 
-            # 更新预览显示（使用交互式组件）
-            self.interactive_scroll_area.set_pixmap(preview_pixmap)
+            # 同时生成高分辨率打印版本（用于打印）
+            self._cached_print_pages = self._generate_high_res_print_pages(
+                expanded_images, layout_type, spacing_mm, margin_mm
+            )
+
+            # 更新多页面预览显示
+            self.multi_page_preview.set_page_pixmaps(page_previews)
 
             # 更新布局信息
-            layout_info = self.layout_engine.get_layout_info(layout_type, spacing_mm, margin_mm)
             total_images = len(expanded_images)
             unique_images = len(self.image_items)
+            total_pages = multi_layout['total_pages']
+            max_per_page = multi_layout['max_per_page']
 
             if not self.image_items:
                 # 没有图片时显示布局容量信息
-                info_text = f"可放置: {layout_info['max_count']}个 | 当前: 0个 | 导入图片开始使用"
-                self.status_bar.showMessage(f"排版预览 - {layout_info['type']}模式，可放置{layout_info['max_count']}个圆形")
+                info_text = f"每页可放置: {max_per_page}个 | 当前: 0个 | 导入图片开始使用"
+                self.status_bar.showMessage(f"排版预览 - {layout_type}模式，每页可放置{max_per_page}个圆形")
             else:
                 # 有图片时显示详细信息
-                info_text = f"可放置: {layout_info['max_count']}个 | 总数: {total_images}个 | 种类: {unique_images}个"
-                self.status_bar.showMessage(f"排版预览已更新 - {layout_info['type']}模式，共{total_images}个图片")
+                if total_pages == 1:
+                    info_text = f"可放置: {max_per_page}个 | 总数: {total_images}个 | 种类: {unique_images}个"
+                else:
+                    info_text = f"共{total_pages}页 | 每页{max_per_page}个 | 总数: {total_images}个 | 种类: {unique_images}个"
+                self.status_bar.showMessage(f"排版预览已更新 - {layout_type}模式，共{total_pages}页，{total_images}个图片")
 
             self.layout_info_label.setText(info_text)
 
@@ -1318,6 +1323,33 @@ class MainWindow(QMainWindow):
             print(f"更新排版预览失败: {e}")
             self.show_layout_hint()
             self._preview_cache_valid = False
+            self._cached_print_pages = []  # 清空打印缓存
+
+    def _generate_high_res_print_pages(self, expanded_images, layout_type, spacing_mm, margin_mm):
+        """
+        生成高分辨率打印页面（用于实际打印）
+        使用与预览相同的布局引擎，确保一致性
+        """
+        try:
+            if not expanded_images:
+                return []
+
+            print("生成高分辨率打印页面...")
+
+            # 使用layout_engine的多页面预览功能，但设置为1.0比例（全分辨率）
+            # 这确保了与预览使用完全相同的布局逻辑和图像处理流程
+            print_pages = self.layout_engine.create_multi_page_preview(
+                expanded_images, layout_type, spacing_mm, margin_mm,
+                preview_scale=1.0  # 使用全分辨率，确保与预览逻辑一致
+            )
+
+            print(f"高分辨率打印页面生成完成，共{len(print_pages)}页")
+            return print_pages
+
+        except Exception as e:
+            print(f"生成高分辨率打印页面失败: {e}")
+            traceback.print_exc()
+            return []
 
     def auto_layout(self):
         """自动排版（为所有图片应用最佳参数）"""
@@ -1460,7 +1492,7 @@ class MainWindow(QMainWindow):
     def fit_preview_to_window(self):
         """适应窗口显示预览"""
         try:
-            self.interactive_scroll_area.fit_to_window()
+            self.multi_page_preview.fit_to_window()
             self.status_bar.showMessage("预览已适应窗口大小")
         except Exception as e:
             print(f"适应窗口失败: {e}")
@@ -1468,7 +1500,7 @@ class MainWindow(QMainWindow):
     def reset_preview_view(self):
         """重置预览视图"""
         try:
-            self.interactive_scroll_area.reset_view()
+            self.multi_page_preview.set_scale(0.5)  # 重置为默认缩放
             self.status_bar.showMessage("预览视图已重置")
         except Exception as e:
             print(f"重置视图失败: {e}")
@@ -1502,77 +1534,425 @@ class MainWindow(QMainWindow):
             self.layout_preview_timer.start(self.layout_debounce_delay)
 
     def print_layout(self):
-        """打印当前A4排版"""
+        """打印当前A4排版 - 使用自定义打印对话框"""
         try:
-            # 检查是否有图片可以打印
+            # 获取图片列表
             expanded_images = self.get_expanded_image_list()
             if not expanded_images:
                 QMessageBox.warning(self, "打印失败", "没有图片可以打印，请先导入图片。")
                 return
 
-            # 导入打印相关模块
-            from PySide6.QtPrintSupport import QPrinter, QPrintDialog
+            # 生成预览图片
+            preview_pixmap = self._generate_print_preview_image(expanded_images)
 
-            # 创建打印机对象（使用高分辨率模式，其他设置让用户在对话框中控制）
-            printer = QPrinter(QPrinter.HighResolution)
+            # 导入自定义打印对话框
+            from ui.custom_print_dialog import CustomPrintDialog
 
-            # 只设置基本的输出格式，其他设置交给用户
-            printer.setOutputFormat(QPrinter.NativeFormat)  # 使用本地打印格式
+            # 创建自定义打印对话框
+            print_dialog = CustomPrintDialog(preview_pixmap, self)
+            print_dialog.print_requested.connect(lambda settings: self._execute_custom_print(settings, expanded_images))
 
-            # 显示打印对话框（用户可以在此设置纸张、方向、边距等）
-            print_dialog = QPrintDialog(printer, self)
-            print_dialog.setWindowTitle("打印A4排版")
+            # 显示对话框
+            print_dialog.exec()
 
-            if print_dialog.exec() == QPrintDialog.Accepted:
-                # 执行打印
-                self.status_bar.showMessage("正在打印...")
-
-                # 生成打印内容（使用标准槽函数）
-                try:
-                    self._current_print_images = expanded_images
-                    self.paint_requested_handler(printer)
-                    self.status_bar.showMessage("打印完成")
-                    QMessageBox.information(self, "打印成功", "A4排版已发送到打印机！")
-                except Exception as print_error:
-                    self.status_bar.showMessage("打印失败")
-                    QMessageBox.warning(self, "打印失败", f"打印过程中发生错误：{str(print_error)}")
-            else:
-                self.status_bar.showMessage("打印已取消")
-
-        except ImportError:
+        except ImportError as e:
             QMessageBox.critical(
                 self,
                 "打印功能不可用",
-                "打印功能需要Qt打印支持模块，请确保已正确安装PySide6。"
+                f"打印功能需要相关模块，请确保已正确安装：{str(e)}"
             )
         except Exception as e:
             QMessageBox.critical(self, "打印错误", f"打印时发生错误：{str(e)}")
+            traceback.print_exc()
+
+    def _generate_print_preview_image(self, expanded_images):
+        """生成打印预览图片"""
+        try:
+            # 使用现有的布局引擎生成预览
+            preview_pixmap = self.layout_engine.create_layout_preview(
+                expanded_images,
+                self.layout_mode,
+                self.spacing_value,
+                self.margin_value,
+                preview_scale=1.0  # 使用全尺寸预览
+            )
+
+            return preview_pixmap
+
+        except Exception as e:
+            print(f"生成打印预览失败: {e}")
+            return None
+
+    def _execute_custom_print(self, settings, expanded_images):
+        """执行自定义打印"""
+        try:
+            from PySide6.QtPrintSupport import QPrinter
+
+            # 获取选中的打印机
+            printer_info = settings['printer']
+            if not printer_info:
+                QMessageBox.warning(self, "打印失败", "未选择打印机")
+                return
+
+            # 创建打印机对象
+            printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+            printer.setPrinterName(printer_info.printerName())
+
+            # 设置打印参数
+            printer.setCopyCount(settings['copies'])
+
+            # 设置彩色模式
+            if settings.get('color_mode') == 'grayscale':
+                printer.setColorMode(QPrinter.ColorMode.GrayScale)
+            else:
+                printer.setColorMode(QPrinter.ColorMode.Color)
+
+            # 设置页边距（转换为点）
+            margins = settings['margins']
+            from PySide6.QtCore import QMarginsF
+            from PySide6.QtGui import QPageLayout
+
+            printer_margins = QMarginsF(
+                margins['left'] * 2.83465,   # mm to points
+                margins['top'] * 2.83465,
+                margins['right'] * 2.83465,
+                margins['bottom'] * 2.83465
+            )
+            printer.setPageMargins(printer_margins, QPageLayout.Unit.Point)
+
+            # 启用全页模式，但保留自定义页边距
+            printer.setFullPage(True)
+
+            # 设置高分辨率
+            printer.setResolution(300)
+
+            # 执行打印
+            self.status_bar.showMessage("正在打印...")
+
+            # 使用自定义打印方法，传递设置参数
+            self._custom_print_with_settings(printer, expanded_images, settings)
+
+            self.status_bar.showMessage("打印完成")
+            QMessageBox.information(self, "打印成功", "A4排版已发送到打印机！")
+
+        except Exception as e:
             self.status_bar.showMessage("打印失败")
+            QMessageBox.warning(self, "打印失败", f"打印过程中发生错误：{str(e)}")
+            traceback.print_exc()
+
+    def _custom_print_with_settings(self, printer, expanded_images, settings):
+        """使用自定义设置进行打印"""
+        try:
+            print("开始自定义打印...")
+
+            # 创建QPainter
+            painter = QPainter()
+            if not painter.begin(printer):
+                raise Exception("无法初始化打印机")
+
+            try:
+                # 获取打印机页面信息
+                page_rect = printer.pageRect(QPrinter.Unit.DevicePixel)
+                paper_rect = printer.paperRect(QPrinter.Unit.DevicePixel)
+
+                print(f"打印机页面信息:")
+                print(f"  页面区域: {page_rect.width()}x{page_rect.height()}")
+                print(f"  纸张区域: {paper_rect.width()}x{paper_rect.height()}")
+
+                # 应用自定义页边距
+                margins = settings['margins']
+                margin_left_px = int(margins['left'] * printer.resolution() / 25.4)  # mm to pixels
+                margin_top_px = int(margins['top'] * printer.resolution() / 25.4)
+                margin_right_px = int(margins['right'] * printer.resolution() / 25.4)
+                margin_bottom_px = int(margins['bottom'] * printer.resolution() / 25.4)
+
+                # 计算实际可用的打印区域
+                content_x = page_rect.x() + margin_left_px
+                content_y = page_rect.y() + margin_top_px
+                content_width = page_rect.width() - margin_left_px - margin_right_px
+                content_height = page_rect.height() - margin_top_px - margin_bottom_px
+
+                print(f"自定义页边距 (像素): L{margin_left_px} T{margin_top_px} R{margin_right_px} B{margin_bottom_px}")
+                print(f"内容区域: {content_x},{content_y} {content_width}x{content_height}")
+
+                # 生成布局
+                layouts = self.layout_engine.calculate_multi_page_layout(
+                    len(expanded_images), self.layout_mode, self.spacing_value, self.margin_value
+                )
+
+                if not layouts['pages']:
+                    raise Exception("无法生成布局")
+
+                # 打印每一页
+                for page_index, page_layout in enumerate(layouts['pages']):
+                    if page_index > 0:
+                        printer.newPage()
+
+                    # 获取当前页的图片
+                    start_idx = page_index * layouts['max_per_page']
+                    end_idx = min(start_idx + page_layout['images_on_page'], len(expanded_images))
+                    page_images = expanded_images[start_idx:end_idx]
+
+                    # 渲染当前页
+                    self._render_page_with_custom_margins(
+                        painter, page_images, page_layout,
+                        content_x, content_y, content_width, content_height,
+                        settings
+                    )
+
+                print("打印完成")
+
+            finally:
+                painter.end()
+
+        except Exception as e:
+            print(f"自定义打印失败: {e}")
+            raise
+
+    def _render_page_with_custom_margins(self, painter, page_images, page_layout,
+                                       content_x, content_y, content_width, content_height, settings):
+        """渲染单页内容，应用自定义页边距"""
+        try:
+            # 计算A4原始尺寸到打印区域的缩放比例
+            original_a4_width = self.layout_engine.a4_width_px
+            original_a4_height = self.layout_engine.a4_height_px
+
+            scale_x = content_width / original_a4_width
+            scale_y = content_height / original_a4_height
+            scale = min(scale_x, scale_y)  # 保持比例
+
+            # 计算居中偏移
+            scaled_width = int(original_a4_width * scale)
+            scaled_height = int(original_a4_height * scale)
+            offset_x = content_x + (content_width - scaled_width) // 2
+            offset_y = content_y + (content_height - scaled_height) // 2
+
+            print(f"页面渲染: 缩放{scale:.3f}, 偏移({offset_x},{offset_y})")
+
+            # 绘制页边距线（如果页边距大于0）
+            if any(settings['margins'].values()):
+                self._draw_margin_lines(painter, offset_x, offset_y, scaled_width, scaled_height, scale)
+
+            # 绘制圆形图片
+            positions = page_layout['positions']
+            for i, image_item in enumerate(page_images):
+                if i >= len(positions):
+                    break
+
+                pos_x, pos_y = positions[i]
+
+                # 应用缩放和偏移
+                scaled_x = int(offset_x + pos_x * scale)
+                scaled_y = int(offset_y + pos_y * scale)
+                scaled_radius = int(self.layout_engine.badge_radius_px * scale)
+
+                # 绘制圆形图片
+                self._draw_circular_image(painter, image_item, scaled_x, scaled_y, scaled_radius, settings)
+
+        except Exception as e:
+            print(f"渲染页面失败: {e}")
+            raise
+
+    def _draw_margin_lines(self, painter, offset_x, offset_y, scaled_width, scaled_height, scale):
+        """绘制页边距线"""
+        try:
+            # 计算页边距在缩放后的像素大小
+            margin_px = int(self.margin_value * scale * 300 / 25.4)  # mm to pixels at 300dpi, then scale
+
+            # 设置页边距线样式（与预览一致）
+            from PySide6.QtGui import QPen, QColor
+            painter.setPen(QPen(QColor(200, 200, 200), 1))
+
+            # 绘制页边距矩形
+            margin_left = offset_x + margin_px
+            margin_top = offset_y + margin_px
+            margin_right = offset_x + scaled_width - margin_px
+            margin_bottom = offset_y + scaled_height - margin_px
+
+            painter.drawRect(margin_left, margin_top,
+                           margin_right - margin_left, margin_bottom - margin_top)
+
+        except Exception as e:
+            print(f"绘制页边距线失败: {e}")
+
+    def _draw_circular_image(self, painter, image_item, center_x, center_y, radius, settings):
+        """绘制圆形图片"""
+        try:
+            # 使用ImageProcessor获取处理后的图片
+            from core.image_processor import ImageProcessor, ImageProcessParams
+
+            # 创建图片处理器
+            processor = ImageProcessor()
+
+            # 创建处理参数
+            params = ImageProcessParams(
+                image_path=image_item.file_path,
+                scale=image_item.scale,
+                offset_x=image_item.offset_x,
+                offset_y=image_item.offset_y,
+                rotation=image_item.rotation
+            )
+
+            # 获取圆形裁剪后的图片
+            processed_image = processor.create_circular_crop(params=params)
+            if not processed_image:
+                print(f"无法处理图片: {image_item.file_path}")
+                return
+
+            # 应用彩色模式
+            if settings.get('color_mode') == 'grayscale':
+                # 转换为灰度
+                processed_image = processed_image.convert('L').convert('RGB')
+
+            # 转换为QPixmap
+            from PIL.ImageQt import ImageQt
+            from PySide6.QtGui import QPixmap, QBitmap
+            from PySide6.QtCore import QRect
+
+            qt_image = ImageQt(processed_image)
+            pixmap = QPixmap.fromImage(qt_image)
+
+            # 创建目标区域
+            diameter = radius * 2
+            target_rect = QRect(center_x - radius, center_y - radius, diameter, diameter)
+
+            # 缩放图片到目标大小
+            scaled_pixmap = pixmap.scaled(diameter, diameter,
+                                        Qt.AspectRatioMode.KeepAspectRatio,
+                                        Qt.TransformationMode.SmoothTransformation)
+
+            # 绘制到打印画布
+            painter.drawPixmap(target_rect, scaled_pixmap)
+
+        except Exception as e:
+            print(f"绘制圆形图片失败: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _configure_printer_for_consistency(self, printer):
+        """配置打印机设置，确保与排版预览一致"""
+        try:
+            from PySide6.QtGui import QPageLayout
+            from PySide6.QtCore import QMarginsF
+
+            print("配置打印机设置...")
+
+            # 设置零页边距，确保与预览一致
+            printer.setPageMargins(QMarginsF(0, 0, 0, 0), QPageLayout.Unit.Millimeter)
+
+            # 启用全页模式，使用整个纸张区域
+            printer.setFullPage(True)
+
+            # 设置高分辨率
+            printer.setResolution(300)
+
+            print("打印机配置完成：零页边距、全页模式、300DPI")
+
+        except Exception as e:
+            print(f"配置打印机失败: {e}")
+            # 配置失败不影响打印，继续使用默认设置
+
+    def _simple_print_to_printer(self, printer, expanded_images):
+        """简单的打印实现 - 直接将图片发送到打印机"""
+        try:
+            print("开始简单打印...")
+
+            # 创建QPainter
+            painter = QPainter()
+            if not painter.begin(printer):
+                raise Exception("无法初始化打印机")
+
+            try:
+                # 计算多页面布局
+                multi_layout = self.layout_engine.calculate_multi_page_layout(
+                    len(expanded_images), self.layout_mode, self.spacing_value, self.margin_value
+                )
+
+                print(f"打印{multi_layout['total_pages']}页内容...")
+                image_index = 0
+
+                # 为每个页面打印
+                for page_info in multi_layout['pages']:
+                    print(f"打印第{page_info['page_index'] + 1}页...")
+
+                    # 获取当前页面的图片
+                    page_images = expanded_images[image_index:image_index + page_info['images_on_page']]
+
+                    # 使用缓存的高分辨率图片（如果有的话）
+                    if (hasattr(self, '_cached_print_pages') and
+                        self._cached_print_pages and
+                        page_info['page_index'] < len(self._cached_print_pages)):
+
+                        page_pixmap = self._cached_print_pages[page_info['page_index']]
+                        print(f"使用缓存的第{page_info['page_index'] + 1}页")
+                    else:
+                        # 实时生成页面图片（使用与预览相同的方法）
+                        page_images = expanded_images[image_index:image_index + page_info['images_on_page']]
+                        temp_pages = self.layout_engine.create_multi_page_preview(
+                            page_images, self.layout_mode, self.spacing_value, self.margin_value,
+                            preview_scale=1.0  # 全分辨率
+                        )
+                        page_pixmap = temp_pages[0] if temp_pages else None
+                        print(f"实时生成第{page_info['page_index'] + 1}页")
+
+                    if page_pixmap and not page_pixmap.isNull():
+                        # 获取打印区域
+                        page_rect_f = printer.pageRect(QPrinter.Unit.DevicePixel)
+
+                        # 使用坐标和尺寸的方式绘制，避免类型问题
+                        painter.drawPixmap(
+                            int(page_rect_f.x()),
+                            int(page_rect_f.y()),
+                            int(page_rect_f.width()),
+                            int(page_rect_f.height()),
+                            page_pixmap
+                        )
+                        print(f"第{page_info['page_index'] + 1}页已发送到打印机")
+                    else:
+                        print(f"第{page_info['page_index'] + 1}页生成失败，跳过")
+
+                    # 更新图片索引
+                    image_index += page_info['images_on_page']
+
+                    # 如果不是最后一页，添加新页面
+                    if page_info['page_index'] < multi_layout['total_pages'] - 1:
+                        if not printer.newPage():
+                            raise Exception("无法创建新页面")
+
+                print(f"简单打印完成，共{multi_layout['total_pages']}页")
+
+            finally:
+                painter.end()
+
+        except Exception as e:
+            print(f"简单打印失败: {e}")
+            raise
 
     def print_preview(self):
-        """打印预览"""
+        """打印预览 - 使用系统默认的预览对话框"""
         try:
-            # 检查是否有图片可以预览
+            # 获取图片列表
             expanded_images = self.get_expanded_image_list()
             if not expanded_images:
                 QMessageBox.warning(self, "预览失败", "没有图片可以预览，请先导入图片。")
                 return
 
             # 导入打印预览相关模块
-            from PySide6.QtPrintSupport import QPrintPreviewDialog
-            from PySide6.QtCore import Qt
+            from PySide6.QtPrintSupport import QPrintPreviewDialog, QPrinter
 
-            # 创建打印预览对话框（使用默认设置，用户可以在预览中调整）
-            preview_dialog = QPrintPreviewDialog(self)
+            # 创建打印机对象并配置
+            printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+            self._configure_printer_for_consistency(printer)
+
+            # 创建打印预览对话框
+            preview_dialog = QPrintPreviewDialog(printer, self)
             preview_dialog.setWindowTitle("打印预览 - A4排版")
 
-            # 连接预览信号（参考文章的标准方式）
-            # 保存expanded_images到实例变量，供槽函数使用
+            # 保存图片列表到实例变量，供槽函数使用
             self._current_print_images = expanded_images
-            preview_dialog.paintRequested.connect(self.paint_requested_handler)
 
-            # 打印预览窗口最大化（参考文章建议）
-            preview_dialog.setWindowState(Qt.WindowMaximized)
+            # 连接预览信号，使用简单的绘制函数
+            preview_dialog.paintRequested.connect(self._simple_paint_for_preview)
 
             # 显示预览对话框
             preview_dialog.exec()
@@ -1585,6 +1965,22 @@ class MainWindow(QMainWindow):
             )
         except Exception as e:
             QMessageBox.critical(self, "预览错误", f"打印预览时发生错误：{str(e)}")
+            traceback.print_exc()
+
+    def _simple_paint_for_preview(self, printer):
+        """简单的预览绘制函数 - 与打印使用相同的逻辑"""
+        try:
+            expanded_images = getattr(self, '_current_print_images', [])
+            print(f"开始预览绘制，图片数量: {len(expanded_images)}")
+
+            # 直接使用简单打印函数的逻辑
+            self._simple_print_to_printer(printer, expanded_images)
+
+        except Exception as e:
+            print(f"预览绘制失败: {e}")
+            traceback.print_exc()
+
+
 
     def _pil_to_qpixmap(self, pil_image):
         """将PIL图片转换为QPixmap"""
@@ -1617,132 +2013,15 @@ class MainWindow(QMainWindow):
             blank_pixmap.fill()
             return blank_pixmap
 
-    def paint_requested_handler(self, printer):
-        """打印预览槽函数 - 预先生成A4图片再打印"""
-        try:
-            # 获取当前要打印的图片列表
-            expanded_images = getattr(self, '_current_print_images', [])
 
-            # 预先生成完整的A4排版图片（高分辨率用于打印）
-            print("正在生成A4排版图片...")
-            a4_pixmap = self._generate_print_ready_a4_image(expanded_images)
 
-            if not a4_pixmap or a4_pixmap.isNull():
-                print("生成A4排版图片失败")
-                return
 
-            # 创建QPainter并直接绘制预生成的A4图片
-            painter = QPainter(printer)
 
-            # 获取整个纸张区域（而不是可打印区域，避免双重边距）
-            paper_rect_f = printer.paperRect(QPrinter.Unit.DevicePixel)
-
-            # 转换QRectF为QRect（drawPixmap需要QRect参数）
-            paper_rect = QRect(
-                int(paper_rect_f.x()),
-                int(paper_rect_f.y()),
-                int(paper_rect_f.width()),
-                int(paper_rect_f.height())
-            )
-
-            # 直接将完整的A4图片绘制到整个纸张区域
-            # 这样可以确保与导出图片的效果完全一致，避免双重边距
-            painter.drawPixmap(paper_rect, a4_pixmap)
-
-            print(f"打印区域: {paper_rect.width()}x{paper_rect.height()}像素")
-            print(f"图片尺寸: {a4_pixmap.width()}x{a4_pixmap.height()}像素")
-
-            painter.end()
-            print("A4图片已发送到打印机")
-
-        except Exception as e:
-            print(f"打印渲染失败: {e}")
-            traceback.print_exc()
-
-    def _generate_print_ready_a4_image(self, expanded_images):
-        """
-        生成打印就绪的A4图片（使用与导出图片相同的逻辑确保一致性）
-        参数:
-            expanded_images: 展开后的图片列表
-        返回: QPixmap - 高分辨率的A4排版图片
-        """
-        try:
-            # 使用导出管理器生成图片，确保与导出功能完全一致
-            print("使用导出逻辑生成打印图片...")
-
-            # 计算布局（与导出图片使用相同的逻辑）
-            if self.layout_mode == 'grid':
-                layout = self.layout_engine.calculate_grid_layout(self.spacing_value, self.margin_value)
-            else:
-                layout = self.layout_engine.calculate_compact_layout(self.spacing_value, self.margin_value)
-
-            # 创建A4画布（与导出图片使用相同的尺寸和DPI）
-            from utils.config import PRINT_DPI
-            canvas_img = Image.new('RGB', (self.layout_engine.a4_width_px, self.layout_engine.a4_height_px), (255, 255, 255))
-
-            # 处理每个图片（与导出图片使用相同的逻辑）
-            positions = layout['positions']
-            processed_count = 0
-
-            for i, image_item in enumerate(expanded_images):
-                if i >= len(positions):
-                    break  # 超出可放置数量
-
-                try:
-                    # 获取圆形图片
-                    from core.image_processor import ImageProcessor
-                    processor = ImageProcessor()
-
-                    circle_img = processor.create_circular_crop(
-                        image_item.file_path,
-                        image_item.scale,
-                        image_item.offset_x,
-                        image_item.offset_y,
-                        image_item.rotation
-                    )
-
-                    # 计算粘贴位置（圆心位置转换为左上角位置）
-                    center_x, center_y = positions[i]
-                    paste_x = center_x - self.layout_engine.badge_radius_px
-                    paste_y = center_y - self.layout_engine.badge_radius_px
-
-                    # 粘贴到画布（使用透明度遮罩）
-                    if circle_img.mode == 'RGBA':
-                        canvas_img.paste(circle_img, (paste_x, paste_y), circle_img)
-                    else:
-                        canvas_img.paste(circle_img, (paste_x, paste_y))
-
-                    processed_count += 1
-
-                except Exception as e:
-                    print(f"处理图片失败 {image_item.filename}: {e}")
-                    # 继续处理下一张图片
-
-            # 转换为QPixmap（与导出图片使用相同的转换逻辑）
-            buffer = BytesIO()
-            canvas_img.save(buffer, format='PNG', dpi=(PRINT_DPI, PRINT_DPI))
-            buffer.seek(0)
-
-            pixmap = QPixmap()
-            pixmap.loadFromData(buffer.getvalue())
-
-            if pixmap and not pixmap.isNull():
-                print(f"生成打印图片成功: {pixmap.width()}x{pixmap.height()}像素，处理了{processed_count}张图片")
-                return pixmap
-            else:
-                print("转换为QPixmap失败")
-                return None
-
-        except Exception as e:
-            print(f"生成打印图片失败: {e}")
-            traceback.print_exc()
-            return None
 
     def render_to_printer(self, printer, expanded_images):
         """将A4排版渲染到打印机（兼容旧接口）"""
-        # 设置当前打印图片并调用标准槽函数
-        self._current_print_images = expanded_images
-        self.paint_requested_handler(printer)
+        # 使用简单打印函数
+        self._simple_print_to_printer(printer, expanded_images)
 
     def show_about(self):
         """显示关于对话框"""
