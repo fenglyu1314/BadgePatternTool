@@ -6,12 +6,26 @@
 import sys
 import os
 from io import BytesIO
+from dataclasses import dataclass
 
 from PIL import Image, ImageDraw
 
 # 添加父目录到路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.config import app_config
+
+@dataclass
+class ImageProcessParams:
+    """图片处理参数类"""
+    image_path: str
+    scale: float = 1.0
+    offset_x: int = 0
+    offset_y: int = 0
+    rotation: int = 0
+
+    def to_cache_key(self, extra=""):
+        """生成缓存键"""
+        return f"{self.image_path}:{self.scale}:{self.offset_x}:{self.offset_y}:{self.rotation}:{extra}"
 
 # PySide6导入（用于预览功能）
 try:
@@ -29,6 +43,10 @@ class ImageProcessor:
         self._preview_cache = {}
         self._max_cache_size = 50  # 最大缓存数量
 
+        # 缓存访问时间记录（用于LRU策略）
+        self._cache_access_time = {}
+        self._access_counter = 0
+
     @property
     def badge_diameter_px(self):
         """获取当前圆形直径（像素）"""
@@ -40,54 +58,81 @@ class ImageProcessor:
         return app_config.badge_radius_px
 
     def _manage_cache(self, cache_dict):
-        """管理缓存大小，防止内存过度使用"""
+        """管理缓存大小，防止内存过度使用（改进的LRU策略）"""
         if len(cache_dict) > self._max_cache_size:
-            # 删除最旧的缓存项（简单的LRU策略）
-            oldest_key = next(iter(cache_dict))
-            del cache_dict[oldest_key]
+            # 找到最少使用的缓存项
+            if self._cache_access_time:
+                # 按访问时间排序，删除最旧的
+                oldest_key = min(self._cache_access_time.keys(),
+                               key=lambda k: self._cache_access_time.get(k, 0))
+                if oldest_key in cache_dict:
+                    del cache_dict[oldest_key]
+                    del self._cache_access_time[oldest_key]
+            else:
+                # 降级到简单策略
+                oldest_key = next(iter(cache_dict))
+                del cache_dict[oldest_key]
 
-    def _get_cache_key(self, image_path, scale, offset_x, offset_y, rotation, extra=""):
+    def _update_cache_access(self, cache_key):
+        """更新缓存访问时间"""
+        self._access_counter += 1
+        self._cache_access_time[cache_key] = self._access_counter
+
+    def _get_cache_key(self, params, extra=""):
         """生成缓存键"""
-        return f"{image_path}:{scale}:{offset_x}:{offset_y}:{rotation}:{extra}"
+        if isinstance(params, ImageProcessParams):
+            return params.to_cache_key(extra)
+        else:
+            # 兼容旧接口
+            image_path, scale, offset_x, offset_y, rotation = params
+            return f"{image_path}:{scale}:{offset_x}:{offset_y}:{rotation}:{extra}"
 
-    def create_circular_crop(self, image_path, scale=1.0, offset_x=0, offset_y=0, rotation=0):
+    def create_circular_crop(self, image_path=None, scale=1.0, offset_x=0, offset_y=0, rotation=0, params=None):
         """
         创建圆形裁剪（带缓存优化）
         参数:
-            image_path: 图片路径
+            image_path: 图片路径（兼容旧接口）
             scale: 缩放比例 (1.0 = 原始大小)
             offset_x: X轴偏移 (像素)
             offset_y: Y轴偏移 (像素)
             rotation: 旋转角度 (度)
+            params: ImageProcessParams对象（推荐使用）
         返回: PIL.Image - 裁剪后的圆形图片
         """
+        # 处理参数
+        if params is not None:
+            process_params = params
+        else:
+            process_params = ImageProcessParams(image_path, scale, offset_x, offset_y, rotation)
+
         # 检查缓存
-        cache_key = self._get_cache_key(image_path, scale, offset_x, offset_y, rotation)
+        cache_key = process_params.to_cache_key()
         if cache_key in self._crop_cache:
+            self._update_cache_access(cache_key)  # 更新访问时间
             return self._crop_cache[cache_key].copy()  # 返回副本避免修改缓存
 
         try:
             # 打开原始图片
-            with Image.open(image_path) as original_img:
+            with Image.open(process_params.image_path) as original_img:
                 # 转换为RGB模式
                 if original_img.mode != 'RGB':
                     original_img = original_img.convert('RGB')
-                
+
                 # 应用旋转
-                if rotation != 0:
-                    original_img = original_img.rotate(rotation, expand=True, fillcolor=(255, 255, 255))
-                
+                if process_params.rotation != 0:
+                    original_img = original_img.rotate(process_params.rotation, expand=True, fillcolor=(255, 255, 255))
+
                 # 计算缩放后的尺寸
                 orig_width, orig_height = original_img.size
-                new_width = int(orig_width * scale)
-                new_height = int(orig_height * scale)
-                
+                new_width = int(orig_width * process_params.scale)
+                new_height = int(orig_height * process_params.scale)
+
                 # 应用缩放
-                if scale != 1.0:
+                if process_params.scale != 1.0:
                     original_img = original_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-                
+
                 # 创建圆形裁剪区域
-                circle_img = self._crop_to_circle(original_img, offset_x, offset_y)
+                circle_img = self._crop_to_circle(original_img, process_params.offset_x, process_params.offset_y)
 
                 # 缓存结果
                 self._manage_cache(self._crop_cache)
@@ -102,47 +147,55 @@ class ImageProcessor:
     
     def _crop_to_circle(self, img, offset_x=0, offset_y=0):
         """
-        将图片裁剪为圆形
+        将图片裁剪为圆形（优化版本）
         参数:
             img: PIL.Image对象
             offset_x: X轴偏移
             offset_y: Y轴偏移
         返回: PIL.Image - 圆形图片
         """
-        # 创建目标圆形画布
         circle_size = self.badge_diameter_px
-        circle_img = Image.new('RGBA', (circle_size, circle_size), (255, 255, 255, 0))
-        
-        # 计算图片在圆形中的位置
         img_width, img_height = img.size
-        
-        # 计算居中位置
+
+        # 计算粘贴位置
         center_x = circle_size // 2
         center_y = circle_size // 2
-        
-        # 应用偏移
         paste_x = center_x - img_width // 2 + offset_x
         paste_y = center_y - img_height // 2 + offset_y
-        
-        # 创建临时画布用于粘贴图片
-        temp_canvas = Image.new('RGB', (circle_size, circle_size), (255, 255, 255))
-        
-        # 粘贴图片到临时画布
-        if paste_x < circle_size and paste_y < circle_size and \
-           paste_x + img_width > 0 and paste_y + img_height > 0:
-            temp_canvas.paste(img, (paste_x, paste_y))
-        
-        # 创建圆形遮罩
-        mask = Image.new('L', (circle_size, circle_size), 0)
-        draw = ImageDraw.Draw(mask)
-        draw.ellipse([0, 0, circle_size, circle_size], fill=255)
-        
-        # 应用圆形遮罩
-        circle_img.paste(temp_canvas, (0, 0))
-        circle_img.putalpha(mask)
 
-        # 保持RGBA格式以保留透明度
+        # 优化：直接创建RGBA图像，避免多次转换
+        circle_img = Image.new('RGBA', (circle_size, circle_size), (255, 255, 255, 0))
+
+        # 优化：只在图片与圆形有交集时才进行处理
+        if (paste_x < circle_size and paste_y < circle_size and
+            paste_x + img_width > 0 and paste_y + img_height > 0):
+
+            # 创建白色背景并粘贴图片
+            temp_canvas = Image.new('RGB', (circle_size, circle_size), (255, 255, 255))
+            temp_canvas.paste(img, (paste_x, paste_y))
+
+            # 创建圆形遮罩（复用遮罩以提高性能）
+            mask = self._get_circle_mask(circle_size)
+
+            # 应用遮罩
+            circle_img.paste(temp_canvas, (0, 0))
+            circle_img.putalpha(mask)
+
         return circle_img
+
+    def _get_circle_mask(self, size):
+        """获取圆形遮罩（带缓存）"""
+        mask_key = f"mask_{size}"
+        if not hasattr(self, '_mask_cache'):
+            self._mask_cache = {}
+
+        if mask_key not in self._mask_cache:
+            mask = Image.new('L', (size, size), 0)
+            draw = ImageDraw.Draw(mask)
+            draw.ellipse([0, 0, size, size], fill=255)
+            self._mask_cache[mask_key] = mask
+
+        return self._mask_cache[mask_key]
     
     def _create_blank_circle(self):
         """创建空白圆形图片"""
@@ -155,30 +208,38 @@ class ImageProcessor:
         
         return img
     
-    def create_preview_image(self, image_path, scale=1.0, offset_x=0, offset_y=0, rotation=0, preview_size=200):
+    def create_preview_image(self, image_path=None, scale=1.0, offset_x=0, offset_y=0, rotation=0, preview_size=200, params=None):
         """
         创建预览图片（用于界面显示，带缓存优化）
         参数:
-            image_path: 图片路径
+            image_path: 图片路径（兼容旧接口）
             scale: 缩放比例
             offset_x: X轴偏移
             offset_y: Y轴偏移
             rotation: 旋转角度
             preview_size: 预览图片大小
+            params: ImageProcessParams对象（推荐使用）
         返回: QPixmap - 可用于PySide6显示的图片
         """
         if not PYSIDE6_AVAILABLE:
             print("PySide6不可用，无法创建预览图片")
             return None
 
+        # 处理参数
+        if params is not None:
+            process_params = params
+        else:
+            process_params = ImageProcessParams(image_path, scale, offset_x, offset_y, rotation)
+
         # 检查预览缓存
-        cache_key = self._get_cache_key(image_path, scale, offset_x, offset_y, rotation, f"preview_{preview_size}")
+        cache_key = process_params.to_cache_key(f"preview_{preview_size}")
         if cache_key in self._preview_cache:
+            self._update_cache_access(cache_key)  # 更新访问时间
             return self._preview_cache[cache_key]
 
         try:
             # 创建圆形裁剪
-            circle_img = self.create_circular_crop(image_path, scale, offset_x, offset_y, rotation)
+            circle_img = self.create_circular_crop(params=process_params)
 
             # 缩放到预览大小
             if circle_img.size[0] != preview_size:

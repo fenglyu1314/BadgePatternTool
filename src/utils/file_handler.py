@@ -7,6 +7,8 @@ import os
 import sys
 import uuid
 from PIL import Image
+from PySide6.QtGui import QPixmap
+from io import BytesIO
 
 # 添加父目录到路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -132,9 +134,6 @@ class FileHandler:
         返回: QPixmap - 缩略图对象
         """
         try:
-            from PySide6.QtGui import QPixmap
-            from io import BytesIO
-
             with Image.open(file_path) as img:
                 # 转换为RGB模式（确保兼容性）
                 if img.mode != 'RGB':
@@ -169,7 +168,6 @@ class FileHandler:
 
         except Exception as e:
             # 创建错误占位图
-            from PySide6.QtGui import QPixmap
             error_pixmap = QPixmap(size[0], size[1])
             error_pixmap.fill()  # 填充为白色
             return error_pixmap

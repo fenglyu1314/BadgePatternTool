@@ -31,6 +31,17 @@ class LayoutEngine:
         self.a4_width_px = A4_WIDTH_PX
         self.a4_height_px = A4_HEIGHT_PX
 
+        # 布局缓存
+        self._layout_cache = {}
+        self._max_layout_cache = 20
+
+    def _manage_layout_cache(self):
+        """管理布局缓存大小"""
+        if len(self._layout_cache) >= self._max_layout_cache:
+            # 删除最旧的缓存项
+            oldest_key = next(iter(self._layout_cache))
+            del self._layout_cache[oldest_key]
+
     @property
     def badge_diameter_px(self):
         """获取当前圆形直径（像素）"""
@@ -43,12 +54,17 @@ class LayoutEngine:
         
     def calculate_grid_layout(self, spacing_mm=DEFAULT_SPACING, margin_mm=DEFAULT_MARGIN):
         """
-        计算网格排列布局
+        计算网格排列布局（带缓存优化）
         参数:
             spacing_mm: 圆形间距（毫米）
             margin_mm: 页边距（毫米）
         返回: dict - 布局信息
         """
+        # 检查缓存
+        cache_key = f"grid_{spacing_mm}_{margin_mm}_{app_config.badge_diameter_mm}"
+        if cache_key in self._layout_cache:
+            return self._layout_cache[cache_key].copy()
+
         # 转换为像素
         spacing_px = mm_to_pixels(spacing_mm)
         margin_px = mm_to_pixels(margin_mm)
@@ -80,7 +96,7 @@ class LayoutEngine:
                 y = start_y + row * center_distance + self.badge_radius_px
                 positions.append((int(x), int(y)))
         
-        return {
+        result = {
             'type': 'grid',
             'positions': positions,
             'rows': rows,
@@ -91,6 +107,12 @@ class LayoutEngine:
             'center_distance': center_distance,
             'margin': margin_px
         }
+
+        # 缓存结果
+        self._manage_layout_cache()
+        self._layout_cache[cache_key] = result.copy()
+
+        return result
     
     def calculate_compact_layout(self, spacing_mm=DEFAULT_SPACING, margin_mm=DEFAULT_MARGIN):
         """
@@ -101,6 +123,11 @@ class LayoutEngine:
             margin_mm: 页边距（毫米）
         返回: dict - 布局信息
         """
+        # 检查缓存
+        cache_key = f"compact_{spacing_mm}_{margin_mm}_{app_config.badge_diameter_mm}"
+        if cache_key in self._layout_cache:
+            return self._layout_cache[cache_key].copy()
+
         # 转换为像素
         spacing_px = mm_to_pixels(spacing_mm)
         margin_px = mm_to_pixels(margin_mm)
@@ -109,111 +136,31 @@ class LayoutEngine:
         available_width = self.a4_width_px - 2 * margin_px
         available_height = self.a4_height_px - 2 * margin_px
 
-        positions = []
-
-        # 优化的紧凑排列算法
-        # 目标：实现4-3-4模式，最大化利用空间
-
-        # 圆心之间的最小距离（圆形直径 + 用户设定的间距）
+        # 圆心之间的最小距离
         min_center_distance = self.badge_diameter_px + spacing_px
 
-        # 第一步：计算可以放置的列数
-        # 使用更保守的计算方式，确保所有列都能放下
-        max_cols = 1
+        # 计算最优列数和间距
+        max_cols, horizontal_spacing, start_x = self._calculate_compact_columns(
+            available_width, margin_px, spacing_px, min_center_distance
+        )
 
-        # 逐步增加列数，直到无法放下为止
-        for test_cols in range(1, 5):  # 最多测试4列
-            # 计算这个列数需要的总宽度
-            if test_cols == 1:
-                total_width_needed = self.badge_diameter_px
-            else:
-                # 计算实际可用的水平空间（减去圆形直径）
-                available_for_spacing = available_width - test_cols * self.badge_diameter_px
-                if available_for_spacing < 0:
-                    break  # 空间不足
+        # 计算垂直间距和偏移
+        vertical_spacing, middle_col_offset = self._calculate_compact_vertical_spacing(
+            horizontal_spacing, min_center_distance
+        )
 
-                # 计算间距（列间距数量 = 列数 - 1）
-                actual_spacing = available_for_spacing / (test_cols - 1)
+        # 生成所有位置
+        layout_params = {
+            'max_cols': max_cols,
+            'start_x': start_x,
+            'horizontal_spacing': horizontal_spacing,
+            'margin_px': margin_px,
+            'vertical_spacing': vertical_spacing,
+            'middle_col_offset': middle_col_offset
+        }
+        positions = self._generate_compact_positions(layout_params)
 
-                # 放宽间距要求：允许更小的间距，但不能为负数
-                min_required_spacing = max(0, spacing_px * 0.5)  # 允许间距减半
-                if actual_spacing < min_required_spacing:
-                    break  # 间距太小
-
-                total_width_needed = test_cols * self.badge_diameter_px + (test_cols - 1) * actual_spacing
-
-            # 检查是否能放下
-            if total_width_needed <= available_width:
-                max_cols = test_cols
-            else:
-                break
-
-        # 第二步：使用六边形网格的理论间距
-        # 六边形网格的水平间距 = 圆形直径 * √3/2 + 用户间距
-        hex_horizontal_factor = math.sqrt(3) / 2  # ≈ 0.866
-        theoretical_hex_spacing = self.badge_diameter_px * hex_horizontal_factor + spacing_px
-
-        # 重新计算可以放置的列数（基于六边形间距）
-        max_cols_hex = int((available_width + theoretical_hex_spacing) // theoretical_hex_spacing)
-        max_cols_hex = max(1, max_cols_hex)
-
-        # 检查六边形间距是否可行
-        if max_cols_hex > max_cols:
-            # 六边形间距可以放下更多列，使用六边形间距
-            max_cols = max_cols_hex
-            horizontal_spacing = theoretical_hex_spacing
-
-            # 计算起始位置（从左边距开始）
-            start_x = margin_px + self.badge_radius_px
-        else:
-            # 使用原来的均匀分布方式
-            if max_cols == 1:
-                horizontal_spacing = min_center_distance
-                start_x = margin_px + available_width / 2  # 居中
-            else:
-                # 计算实际可用的水平空间（减去圆形直径）
-                available_for_spacing = available_width - max_cols * self.badge_diameter_px
-                # 计算间距（列间距数量 = 列数 - 1）
-                actual_spacing = available_for_spacing / (max_cols - 1)
-                # 水平间距 = 圆形直径 + 实际间距（这是圆心之间的距离）
-                horizontal_spacing = self.badge_diameter_px + actual_spacing
-                # 起始X位置（第一个圆的圆心）
-                start_x = margin_px + self.badge_radius_px
-
-        # 第三步：计算垂直间距
-        # 六边形网格的垂直间距 = 水平间距 * √3/2
-        theoretical_vertical = horizontal_spacing * math.sqrt(3) / 2
-        # 使用理论值和最小距离的较大者，确保不重叠
-        vertical_spacing = max(theoretical_vertical, min_center_distance)
-
-        # 中间列的垂直偏移
-        middle_col_offset = vertical_spacing / 2
-
-        # 第四步：为每一列计算位置
-        for col in range(max_cols):
-            if max_cols == 1:
-                x = start_x
-            else:
-                x = start_x + col * horizontal_spacing
-
-            # 边界检查
-            if (x - self.badge_radius_px < margin_px or
-                x + self.badge_radius_px > self.a4_width_px - margin_px):
-                continue
-
-            # 计算当前列的Y起始位置
-            if col % 2 == 0:  # 偶数列（第0、2、4...列）
-                y_start = margin_px + self.badge_radius_px
-            else:  # 奇数列（第1、3、5...列）- 向下偏移
-                y_start = margin_px + self.badge_radius_px + middle_col_offset
-
-            # 在当前列中放置圆形
-            y = y_start
-            while y + self.badge_radius_px <= self.a4_height_px - margin_px:
-                positions.append((int(x), int(y)))
-                y += vertical_spacing
-
-        return {
+        result = {
             'type': 'compact',
             'positions': positions,
             'max_count': len(positions),
@@ -225,6 +172,122 @@ class LayoutEngine:
             'margin': margin_px,
             'columns': max_cols
         }
+
+        # 缓存结果
+        self._manage_layout_cache()
+        self._layout_cache[cache_key] = result.copy()
+
+        return result
+
+    def _calculate_compact_columns(self, available_width, margin_px, spacing_px, min_center_distance):
+        """计算紧凑布局的列数和水平间距"""
+        # 第一步：计算可以放置的列数（保守估计）
+        max_cols = self._find_max_columns(available_width, spacing_px)
+
+        # 第二步：尝试使用六边形网格间距
+        hex_horizontal_factor = math.sqrt(3) / 2  # ≈ 0.866
+        theoretical_hex_spacing = self.badge_diameter_px * hex_horizontal_factor + spacing_px
+
+        # 基于六边形间距重新计算列数
+        max_cols_hex = int((available_width + theoretical_hex_spacing) // theoretical_hex_spacing)
+        max_cols_hex = max(1, max_cols_hex)
+
+        # 选择最优方案
+        if max_cols_hex > max_cols:
+            # 六边形间距可以放下更多列
+            max_cols = max_cols_hex
+            horizontal_spacing = theoretical_hex_spacing
+            start_x = margin_px + self.badge_radius_px
+        else:
+            # 使用均匀分布方式
+            horizontal_spacing, start_x = self._calculate_uniform_spacing(
+                max_cols, available_width, margin_px, min_center_distance
+            )
+
+        return max_cols, horizontal_spacing, start_x
+
+    def _find_max_columns(self, available_width, spacing_px):
+        """查找可以放置的最大列数"""
+        max_cols = 1
+
+        for test_cols in range(1, 5):  # 最多测试4列
+            if test_cols == 1:
+                total_width_needed = self.badge_diameter_px
+            else:
+                # 计算实际可用的水平空间
+                available_for_spacing = available_width - test_cols * self.badge_diameter_px
+                if available_for_spacing < 0:
+                    break
+
+                # 计算间距
+                actual_spacing = available_for_spacing / (test_cols - 1)
+                min_required_spacing = max(0, spacing_px * 0.5)  # 允许间距减半
+                if actual_spacing < min_required_spacing:
+                    break
+
+                total_width_needed = test_cols * self.badge_diameter_px + (test_cols - 1) * actual_spacing
+
+            if total_width_needed <= available_width:
+                max_cols = test_cols
+            else:
+                break
+
+        return max_cols
+
+    def _calculate_uniform_spacing(self, max_cols, available_width, margin_px, min_center_distance):
+        """计算均匀分布的间距和起始位置"""
+        if max_cols == 1:
+            horizontal_spacing = min_center_distance
+            start_x = margin_px + available_width / 2  # 居中
+        else:
+            # 计算实际间距
+            available_for_spacing = available_width - max_cols * self.badge_diameter_px
+            actual_spacing = available_for_spacing / (max_cols - 1)
+            horizontal_spacing = self.badge_diameter_px + actual_spacing
+            start_x = margin_px + self.badge_radius_px
+
+        return horizontal_spacing, start_x
+
+    def _calculate_compact_vertical_spacing(self, horizontal_spacing, min_center_distance):
+        """计算紧凑布局的垂直间距"""
+        # 六边形网格的垂直间距 = 水平间距 * √3/2
+        theoretical_vertical = horizontal_spacing * math.sqrt(3) / 2
+        # 使用理论值和最小距离的较大者，确保不重叠
+        vertical_spacing = max(theoretical_vertical, min_center_distance)
+        # 中间列的垂直偏移
+        middle_col_offset = vertical_spacing / 2
+
+        return vertical_spacing, middle_col_offset
+
+    def _generate_compact_positions(self, layout_params):
+        """生成紧凑布局的所有位置"""
+        positions = []
+
+        for col in range(layout_params['max_cols']):
+            # 计算列的X位置
+            if layout_params['max_cols'] == 1:
+                x = layout_params['start_x']
+            else:
+                x = layout_params['start_x'] + col * layout_params['horizontal_spacing']
+
+            # 边界检查
+            if (x - self.badge_radius_px < layout_params['margin_px'] or
+                x + self.badge_radius_px > self.a4_width_px - layout_params['margin_px']):
+                continue
+
+            # 计算当前列的Y起始位置
+            if col % 2 == 0:  # 偶数列
+                y_start = layout_params['margin_px'] + self.badge_radius_px
+            else:  # 奇数列 - 向下偏移
+                y_start = layout_params['margin_px'] + self.badge_radius_px + layout_params['middle_col_offset']
+
+            # 在当前列中放置圆形
+            y = y_start
+            while y + self.badge_radius_px <= self.a4_height_px - layout_params['margin_px']:
+                positions.append((int(x), int(y)))
+                y += layout_params['vertical_spacing']
+
+        return positions
     
     def create_layout_preview(self, image_items, layout_type='grid', spacing_mm=DEFAULT_SPACING,
                             margin_mm=DEFAULT_MARGIN, preview_scale=0.5):
@@ -244,103 +307,132 @@ class LayoutEngine:
 
         try:
             # 计算布局
-            if layout_type == 'grid':
-                layout = self.calculate_grid_layout(spacing_mm, margin_mm)
-            else:
-                layout = self.calculate_compact_layout(spacing_mm, margin_mm)
+            layout = self._get_layout(layout_type, spacing_mm, margin_mm)
 
-            # 创建A4画布
-            canvas = Image.new('RGB', (self.a4_width_px, self.a4_height_px), (255, 255, 255))
+            # 创建画布和绘制对象
+            canvas, draw = self._create_preview_canvas(margin_mm)
 
-            # 绘制页边距线（用于预览）
-            draw = ImageDraw.Draw(canvas)
-            margin_px = mm_to_pixels(margin_mm)
-            draw.rectangle([
-                margin_px, margin_px,
-                self.a4_width_px - margin_px, self.a4_height_px - margin_px
-            ], outline=(200, 200, 200), width=2)
+            # 放置图片
+            self._place_images_on_canvas(canvas, draw, image_items, layout['positions'])
 
-            # 放置圆形图片
-            positions = layout['positions']
-
-            # 创建图片处理器（复用实例）
-            from core.image_processor import ImageProcessor
-            processor = ImageProcessor()
-
-            # 图片缓存字典，避免重复处理相同参数的图片
-            image_cache = {}
-
-            for i, image_item in enumerate(image_items):
-                if i >= len(positions):
-                    break  # 超出可放置数量
-
-                try:
-                    # 创建缓存键
-                    cache_key = f"{image_item.file_path}:{image_item.scale}:{image_item.offset_x}:{image_item.offset_y}:{image_item.rotation}"
-
-                    # 检查缓存
-                    if cache_key in image_cache:
-                        circle_img = image_cache[cache_key]
-                    else:
-                        # 获取圆形图片
-                        circle_img = processor.create_circular_crop(
-                            image_item.file_path,
-                            image_item.scale,
-                            image_item.offset_x,
-                            image_item.offset_y,
-                            image_item.rotation
-                        )
-                        # 缓存结果
-                        image_cache[cache_key] = circle_img
-
-                    # 计算粘贴位置（圆心位置转换为左上角位置）
-                    center_x, center_y = positions[i]
-                    paste_x = center_x - self.badge_radius_px
-                    paste_y = center_y - self.badge_radius_px
-
-                    # 粘贴到画布（使用透明度遮罩）
-                    if circle_img.mode == 'RGBA':
-                        canvas.paste(circle_img, (paste_x, paste_y), circle_img)
-                    else:
-                        canvas.paste(circle_img, (paste_x, paste_y))
-
-                except Exception as e:
-                    print(f"放置图片失败 {image_item.filename}: {e}")
-                    # 绘制占位圆形（实心）
-                    center_x, center_y = positions[i]
-                    draw.ellipse([
-                        center_x - self.badge_radius_px, center_y - self.badge_radius_px,
-                        center_x + self.badge_radius_px, center_y + self.badge_radius_px
-                    ], fill=(200, 200, 200), outline=(180, 180, 180), width=1)
-
-            # 绘制剩余位置的占位符（实心）
-            for i in range(len(image_items), len(positions)):
-                center_x, center_y = positions[i]
-                draw.ellipse([
-                    center_x - self.badge_radius_px, center_y - self.badge_radius_px,
-                    center_x + self.badge_radius_px, center_y + self.badge_radius_px
-                ], fill=(220, 220, 220), outline=(200, 200, 200), width=1)
-
-            # 缩放到预览大小
-            preview_width = int(self.a4_width_px * preview_scale)
-            preview_height = int(self.a4_height_px * preview_scale)
-            preview_img = canvas.resize((preview_width, preview_height), Image.Resampling.LANCZOS)
+            # 绘制占位符
+            self._draw_placeholders(draw, image_items, layout['positions'])
 
             # 转换为QPixmap
-            buffer = BytesIO()
-            preview_img.save(buffer, format='PNG')
-            buffer.seek(0)
-
-            pixmap = QPixmap()
-            pixmap.loadFromData(buffer.getvalue())
-            return pixmap
+            return self._canvas_to_pixmap(canvas, preview_scale)
 
         except Exception as e:
             print(f"创建排版预览失败: {e}")
-            # 返回空白预览
-            blank_pixmap = QPixmap(400, 566)
-            blank_pixmap.fill()  # 填充为白色
-            return blank_pixmap
+            return self._create_blank_preview()
+
+    def _get_layout(self, layout_type, spacing_mm, margin_mm):
+        """获取布局信息"""
+        if layout_type == 'grid':
+            return self.calculate_grid_layout(spacing_mm, margin_mm)
+        else:
+            return self.calculate_compact_layout(spacing_mm, margin_mm)
+
+    def _create_preview_canvas(self, margin_mm):
+        """创建预览画布"""
+        # 创建A4画布
+        canvas = Image.new('RGB', (self.a4_width_px, self.a4_height_px), (255, 255, 255))
+
+        # 绘制页边距线
+        draw = ImageDraw.Draw(canvas)
+        margin_px = mm_to_pixels(margin_mm)
+        draw.rectangle([
+            margin_px, margin_px,
+            self.a4_width_px - margin_px, self.a4_height_px - margin_px
+        ], outline=(200, 200, 200), width=2)
+
+        return canvas, draw
+
+    def _place_images_on_canvas(self, canvas, draw, image_items, positions):
+        """在画布上放置图片"""
+        from core.image_processor import ImageProcessor
+        processor = ImageProcessor()
+        image_cache = {}
+
+        for i, image_item in enumerate(image_items):
+            if i >= len(positions):
+                break
+
+            try:
+                # 获取或创建圆形图片
+                circle_img = self._get_cached_circle_image(
+                    processor, image_cache, image_item
+                )
+
+                # 计算粘贴位置
+                center_x, center_y = positions[i]
+                paste_x = center_x - self.badge_radius_px
+                paste_y = center_y - self.badge_radius_px
+
+                # 粘贴到画布
+                if circle_img.mode == 'RGBA':
+                    canvas.paste(circle_img, (paste_x, paste_y), circle_img)
+                else:
+                    canvas.paste(circle_img, (paste_x, paste_y))
+
+            except Exception as e:
+                print(f"放置图片失败 {image_item.filename}: {e}")
+                self._draw_error_placeholder(draw, positions[i])
+
+    def _get_cached_circle_image(self, processor, image_cache, image_item):
+        """获取缓存的圆形图片"""
+        cache_key = f"{image_item.file_path}:{image_item.scale}:{image_item.offset_x}:{image_item.offset_y}:{image_item.rotation}"
+
+        if cache_key in image_cache:
+            return image_cache[cache_key]
+
+        circle_img = processor.create_circular_crop(
+            image_item.file_path,
+            image_item.scale,
+            image_item.offset_x,
+            image_item.offset_y,
+            image_item.rotation
+        )
+        image_cache[cache_key] = circle_img
+        return circle_img
+
+    def _draw_error_placeholder(self, draw, position):
+        """绘制错误占位符"""
+        center_x, center_y = position
+        draw.ellipse([
+            center_x - self.badge_radius_px, center_y - self.badge_radius_px,
+            center_x + self.badge_radius_px, center_y + self.badge_radius_px
+        ], fill=(200, 200, 200), outline=(180, 180, 180), width=1)
+
+    def _draw_placeholders(self, draw, image_items, positions):
+        """绘制剩余位置的占位符"""
+        for i in range(len(image_items), len(positions)):
+            center_x, center_y = positions[i]
+            draw.ellipse([
+                center_x - self.badge_radius_px, center_y - self.badge_radius_px,
+                center_x + self.badge_radius_px, center_y + self.badge_radius_px
+            ], fill=(220, 220, 220), outline=(200, 200, 200), width=1)
+
+    def _canvas_to_pixmap(self, canvas, preview_scale):
+        """将画布转换为QPixmap"""
+        # 缩放到预览大小
+        preview_width = int(self.a4_width_px * preview_scale)
+        preview_height = int(self.a4_height_px * preview_scale)
+        preview_img = canvas.resize((preview_width, preview_height), Image.Resampling.LANCZOS)
+
+        # 转换为QPixmap
+        buffer = BytesIO()
+        preview_img.save(buffer, format='PNG')
+        buffer.seek(0)
+
+        pixmap = QPixmap()
+        pixmap.loadFromData(buffer.getvalue())
+        return pixmap
+
+    def _create_blank_preview(self):
+        """创建空白预览"""
+        blank_pixmap = QPixmap(400, 566)
+        blank_pixmap.fill()
+        return blank_pixmap
     
     def get_layout_info(self, layout_type='grid', spacing_mm=DEFAULT_SPACING, margin_mm=DEFAULT_MARGIN):
         """

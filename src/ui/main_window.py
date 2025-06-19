@@ -14,8 +14,12 @@ from PySide6.QtWidgets import (
     QMessageBox, QStatusBar, QSplitter, QGroupBox,
     QSpacerItem, QSizePolicy
 )
-from PySide6.QtCore import Qt, QTimer, QSize, QPoint
-from PySide6.QtGui import QAction, QIcon
+from PySide6.QtCore import Qt, QTimer, QSize, QPoint, QRect
+from PySide6.QtGui import QAction, QIcon, QPixmap, QPainter
+from PySide6.QtPrintSupport import QPrinter
+from PIL import Image
+from io import BytesIO
+import traceback
 
 # 添加父目录到路径以便导入模块
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -1585,10 +1589,6 @@ class MainWindow(QMainWindow):
     def _pil_to_qpixmap(self, pil_image):
         """将PIL图片转换为QPixmap"""
         try:
-            from PySide6.QtGui import QPixmap
-            from io import BytesIO
-            from PIL import Image
-
             # 将PIL图片保存到字节流
             buffer = BytesIO()
             try:
@@ -1613,7 +1613,6 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"PIL到QPixmap转换失败: {e}")
             # 返回空白pixmap
-            from PySide6.QtGui import QPixmap
             blank_pixmap = QPixmap(100, 100)
             blank_pixmap.fill()
             return blank_pixmap
@@ -1621,8 +1620,6 @@ class MainWindow(QMainWindow):
     def paint_requested_handler(self, printer):
         """打印预览槽函数 - 预先生成A4图片再打印"""
         try:
-            from PySide6.QtGui import QPainter
-
             # 获取当前要打印的图片列表
             expanded_images = getattr(self, '_current_print_images', [])
 
@@ -1638,8 +1635,6 @@ class MainWindow(QMainWindow):
             painter = QPainter(printer)
 
             # 获取整个纸张区域（而不是可打印区域，避免双重边距）
-            from PySide6.QtPrintSupport import QPrinter
-            from PySide6.QtCore import QRect
             paper_rect_f = printer.paperRect(QPrinter.Unit.DevicePixel)
 
             # 转换QRectF为QRect（drawPixmap需要QRect参数）
@@ -1662,7 +1657,6 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             print(f"打印渲染失败: {e}")
-            import traceback
             traceback.print_exc()
 
     def _generate_print_ready_a4_image(self, expanded_images):
@@ -1673,10 +1667,6 @@ class MainWindow(QMainWindow):
         返回: QPixmap - 高分辨率的A4排版图片
         """
         try:
-            from PySide6.QtGui import QPixmap
-            from PIL import Image
-            from io import BytesIO
-
             # 使用导出管理器生成图片，确保与导出功能完全一致
             print("使用导出逻辑生成打印图片...")
 
@@ -1745,7 +1735,6 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             print(f"生成打印图片失败: {e}")
-            import traceback
             traceback.print_exc()
             return None
 

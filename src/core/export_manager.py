@@ -6,6 +6,7 @@
 import os
 import sys
 from datetime import datetime
+from dataclasses import dataclass
 
 from PIL import Image
 from reportlab.pdfgen import canvas
@@ -14,6 +15,14 @@ from reportlab.lib.pagesizes import A4
 # 添加父目录到路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.config import DEFAULT_SPACING, DEFAULT_MARGIN, PRINT_DPI
+
+@dataclass
+class ExportConfig:
+    """导出配置类"""
+    layout_type: str = 'grid'
+    spacing_mm: float = DEFAULT_SPACING
+    margin_mm: float = DEFAULT_MARGIN
+    format_type: str = 'PNG'
 from core.layout_engine import LayoutEngine
 from core.image_processor import ImageProcessor
 
@@ -110,25 +119,33 @@ class ExportManager:
             print(f"PDF导出失败: {e}")
             return False, 0
     
-    def export_to_image(self, image_items, output_path, format_type='PNG',
-                       layout_type='grid', spacing_mm=DEFAULT_SPACING, margin_mm=DEFAULT_MARGIN):
+    def export_to_image(self, image_items, output_path, config=None, **kwargs):
         """
         导出为图片文件（PNG/JPG）
         参数:
             image_items: 图片项目列表
             output_path: 输出文件路径
-            format_type: 图片格式 ('PNG' 或 'JPEG')
-            layout_type: 布局类型
-            spacing_mm: 间距
-            margin_mm: 页边距
+            config: ExportConfig对象（推荐使用）
+            **kwargs: 兼容旧接口的参数（format_type, layout_type, spacing_mm, margin_mm）
         返回: tuple - (是否成功, 处理数量)
         """
+        # 处理配置参数
+        if config is not None:
+            export_config = config
+        else:
+            # 兼容旧接口
+            export_config = ExportConfig(
+                layout_type=kwargs.get('layout_type', 'grid'),
+                spacing_mm=kwargs.get('spacing_mm', DEFAULT_SPACING),
+                margin_mm=kwargs.get('margin_mm', DEFAULT_MARGIN),
+                format_type=kwargs.get('format_type', 'PNG')
+            )
         try:
             # 计算布局
-            if layout_type == 'grid':
-                layout = self.layout_engine.calculate_grid_layout(spacing_mm, margin_mm)
+            if export_config.layout_type == 'grid':
+                layout = self.layout_engine.calculate_grid_layout(export_config.spacing_mm, export_config.margin_mm)
             else:
-                layout = self.layout_engine.calculate_compact_layout(spacing_mm, margin_mm)
+                layout = self.layout_engine.calculate_compact_layout(export_config.spacing_mm, export_config.margin_mm)
             
             # 创建A4画布
             canvas_img = Image.new('RGB', (self.layout_engine.a4_width_px, self.layout_engine.a4_height_px), (255, 255, 255))
@@ -169,7 +186,7 @@ class ExportManager:
                     continue
             
             # 保存图片
-            if format_type.upper() == 'JPEG':
+            if export_config.format_type.upper() == 'JPEG':
                 canvas_img.save(output_path, "JPEG", quality=95, dpi=(PRINT_DPI, PRINT_DPI))
             else:
                 canvas_img.save(output_path, "PNG", dpi=(PRINT_DPI, PRINT_DPI))
