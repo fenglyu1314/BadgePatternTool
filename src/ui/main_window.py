@@ -564,6 +564,11 @@ class MainWindow(QMainWindow):
         apply_btn.clicked.connect(self.apply_edit)
         btn_layout.addWidget(apply_btn)
 
+        # 调试按钮（临时）
+        debug_btn = QPushButton("调试")
+        debug_btn.clicked.connect(self.debug_parameters)
+        btn_layout.addWidget(debug_btn)
+
         parent_layout.addLayout(btn_layout)
 
         # 初始显示提示
@@ -1170,6 +1175,21 @@ class MainWindow(QMainWindow):
             self.update_layout_preview()
 
             QMessageBox.information(self, "提示", "编辑参数已保存，可在A4排版预览中查看效果")
+
+    def debug_parameters(self):
+        """调试参数转换"""
+        if hasattr(self, 'interactive_editor') and self.interactive_editor.original_image:
+            self.interactive_editor.debug_parameters()
+
+            # 同时显示当前选择的图片项参数
+            if self.current_selection:
+                print(f"=== 图片项参数 ===")
+                print(f"文件: {self.current_selection.filename}")
+                print(f"缩放: {self.current_selection.scale}")
+                print(f"偏移: ({self.current_selection.offset_x}, {self.current_selection.offset_y})")
+                print(f"================")
+        else:
+            print("没有加载的图片可以调试")
 
     def show_layout_hint(self):
         """显示排版提示"""

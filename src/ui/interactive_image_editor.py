@@ -569,9 +569,13 @@ class InteractiveImageEditor(QLabel):
         """发送参数改变信号（转换为原图坐标系）"""
         if self.original_image:
             # 将预览坐标系的偏移转换为原图坐标系
-            # 预览图的偏移需要按比例放大到原图
-            actual_offset_x = int(self.image_offset.x() / self.preview_scale_ratio)
-            actual_offset_y = int(self.image_offset.y() / self.preview_scale_ratio)
+            # 注意：偏移量需要考虑预览图与原图的比例关系
+            if self.preview_scale_ratio > 0:
+                actual_offset_x = int(self.image_offset.x() / self.preview_scale_ratio)
+                actual_offset_y = int(self.image_offset.y() / self.preview_scale_ratio)
+            else:
+                actual_offset_x = self.image_offset.x()
+                actual_offset_y = self.image_offset.y()
 
             self.parameters_changed.emit(self.image_scale, actual_offset_x, actual_offset_y)
     
@@ -638,3 +642,26 @@ class InteractiveImageEditor(QLabel):
             'offset_x': actual_offset_x,
             'offset_y': actual_offset_y
         }
+
+    def debug_parameters(self):
+        """调试参数转换（用于验证坐标系转换是否正确）"""
+        if not self.original_image:
+            return
+
+        print(f"=== 参数调试信息 ===")
+        print(f"原图尺寸: {self.original_image.size}")
+        print(f"预览图尺寸: {self.preview_image.size if self.preview_image else 'None'}")
+        print(f"预览缩放比例: {self.preview_scale_ratio}")
+        print(f"当前缩放: {self.image_scale}")
+        print(f"预览偏移: ({self.image_offset.x()}, {self.image_offset.y()})")
+
+        # 计算原图偏移
+        if self.preview_scale_ratio > 0:
+            actual_offset_x = int(self.image_offset.x() / self.preview_scale_ratio)
+            actual_offset_y = int(self.image_offset.y() / self.preview_scale_ratio)
+        else:
+            actual_offset_x = self.image_offset.x()
+            actual_offset_y = self.image_offset.y()
+
+        print(f"原图偏移: ({actual_offset_x}, {actual_offset_y})")
+        print(f"===================")
