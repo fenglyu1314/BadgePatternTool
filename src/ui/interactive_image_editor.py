@@ -26,8 +26,10 @@ class InteractiveImageEditor(QLabel):
         super().__init__()
 
         # 图片相关
-        self.original_image = None  # PIL Image对象
+        self.original_image = None  # PIL Image对象（原始分辨率）
+        self.preview_image = None   # PIL Image对象（预览分辨率）
         self.image_path = None
+        self.preview_scale_ratio = 1.0  # 预览图与原图的比例
 
         # 编辑参数
         self.image_scale = 1.0  # 图片缩放比例
@@ -93,7 +95,7 @@ class InteractiveImageEditor(QLabel):
         self.display_to_actual_ratio = self.mask_radius / actual_radius_px
 
     def load_image(self, image_path):
-        """加载图片"""
+        """加载图片（优化：使用预览分辨率提升性能）"""
         try:
             self.image_path = image_path
             self.original_image = Image.open(image_path)
@@ -101,6 +103,9 @@ class InteractiveImageEditor(QLabel):
             # 转换为RGB模式
             if self.original_image.mode != 'RGB':
                 self.original_image = self.original_image.convert('RGB')
+
+            # 创建预览分辨率的图片
+            self._create_preview_image()
 
             # 重新计算遮罩半径和比例（确保比例正确）
             self.update_mask_radius()
@@ -125,6 +130,7 @@ class InteractiveImageEditor(QLabel):
         except Exception as e:
             print(f"加载图片失败: {e}")
             self.original_image = None
+            self.preview_image = None
             self.image_path = None
             self._invalidate_cache()
             self.update()
@@ -151,6 +157,33 @@ class InteractiveImageEditor(QLabel):
 
         # 限制缩放范围
         self.image_scale = max(self.min_scale, min(self.max_scale, self.image_scale))
+
+    def _create_preview_image(self):
+        """创建预览分辨率的图片（性能优化）"""
+        if not self.original_image:
+            return
+
+        # 设置预览图片的最大尺寸（根据编辑器大小）
+        max_preview_size = 1024  # 预览图最大尺寸
+
+        orig_width, orig_height = self.original_image.size
+
+        # 计算预览图的缩放比例
+        if orig_width > max_preview_size or orig_height > max_preview_size:
+            scale_ratio = min(max_preview_size / orig_width, max_preview_size / orig_height)
+            preview_width = int(orig_width * scale_ratio)
+            preview_height = int(orig_height * scale_ratio)
+
+            # 创建预览图片
+            self.preview_image = self.original_image.resize(
+                (preview_width, preview_height),
+                Image.Resampling.LANCZOS
+            )
+            self.preview_scale_ratio = scale_ratio
+        else:
+            # 图片本身就不大，直接使用原图
+            self.preview_image = self.original_image.copy()
+            self.preview_scale_ratio = 1.0
 
     def _invalidate_cache(self):
         """清除图片缓存"""
@@ -265,8 +298,8 @@ class InteractiveImageEditor(QLabel):
         painter.end()
     
     def create_image_pixmap(self):
-        """创建图片的QPixmap（带缓存优化）"""
-        if not self.original_image:
+        """创建图片的QPixmap（使用预览图片优化性能）"""
+        if not self.preview_image:
             return None
 
         # 检查缓存是否有效
@@ -274,44 +307,22 @@ class InteractiveImageEditor(QLabel):
             return self._cached_pixmap
 
         try:
-            # 计算缩放后的尺寸
-            img_width, img_height = self.original_image.size
+            # 使用预览图片进行显示（性能优化）
+            img_width, img_height = self.preview_image.size
             scaled_width = int(img_width * self.image_scale)
             scaled_height = int(img_height * self.image_scale)
 
-            # 优化：对大图片使用更高效的缩放策略
-            max_display_size = 2048  # 最大显示尺寸
-            if scaled_width > max_display_size or scaled_height > max_display_size:
-                # 大图片：先缩放到合理尺寸，再进行最终缩放
-                temp_scale = min(max_display_size / scaled_width, max_display_size / scaled_height)
-                temp_width = int(scaled_width * temp_scale)
-                temp_height = int(scaled_height * temp_scale)
+            # 优化：使用预览图片进行缩放，性能大幅提升
+            scaled_image = self.preview_image.resize(
+                (scaled_width, scaled_height),
+                Image.Resampling.LANCZOS
+            )
 
-                # 两步缩放：先快速缩放，再精确缩放
-                temp_image = self.original_image.resize(
-                    (temp_width, temp_height),
-                    Image.Resampling.NEAREST  # 快速缩放
-                )
-                scaled_image = temp_image.resize(
-                    (scaled_width, scaled_height),
-                    Image.Resampling.LANCZOS  # 高质量缩放
-                )
-                del temp_image  # 立即释放临时图片
-            else:
-                # 小图片：直接高质量缩放
-                scaled_image = self.original_image.resize(
-                    (scaled_width, scaled_height),
-                    Image.Resampling.LANCZOS
-                )
-
-            # 转换为QPixmap
+            # 转换为QPixmap（预览图片，性能优化）
             buffer = BytesIO()
             try:
-                # 对大图片使用JPEG格式以减少内存使用
-                if scaled_width * scaled_height > 1024 * 1024:  # 大于1M像素
-                    scaled_image.save(buffer, format='JPEG', quality=95)
-                else:
-                    scaled_image.save(buffer, format='PNG')
+                # 预览图片统一使用PNG格式，质量和性能平衡
+                scaled_image.save(buffer, format='PNG')
                 buffer.seek(0)
 
                 pixmap = QPixmap()
@@ -320,7 +331,7 @@ class InteractiveImageEditor(QLabel):
                 # 更新缓存
                 self._cached_pixmap = pixmap
                 self._cache_scale = self.image_scale
-                self._cache_size = self.original_image.size
+                self._cache_size = self.preview_image.size
                 self._cache_valid = True
 
                 return pixmap
@@ -425,16 +436,8 @@ class InteractiveImageEditor(QLabel):
             self.update()
 
             # 使用防抖定时器延迟更新缓存和信号
-            # 根据图片大小调整防抖延迟
-            if self.original_image:
-                img_width, img_height = self.original_image.size
-                pixel_count = img_width * img_height
-                if pixel_count > 2000000:  # 大于200万像素
-                    delay = 100  # 大图片使用更长延迟
-                else:
-                    delay = 50   # 小图片使用短延迟
-            else:
-                delay = 50
+            # 由于使用预览图片，可以使用更短的延迟
+            delay = 30  # 预览图片性能好，使用短延迟
 
             self._scale_timer.stop()
             self._scale_timer.start(delay)
@@ -492,19 +495,24 @@ class InteractiveImageEditor(QLabel):
         super().mouseReleaseEvent(event)
     
     def emit_parameters_changed(self):
-        """发送参数改变信号"""
+        """发送参数改变信号（转换为原图坐标系）"""
         if self.original_image:
-            # 计算相对于图片中心的偏移（像素）
-            offset_x = self.image_offset.x()
-            offset_y = self.image_offset.y()
-            
-            self.parameters_changed.emit(self.image_scale, offset_x, offset_y)
+            # 将预览坐标系的偏移转换为原图坐标系
+            # 预览图的偏移需要按比例放大到原图
+            actual_offset_x = int(self.image_offset.x() / self.preview_scale_ratio)
+            actual_offset_y = int(self.image_offset.y() / self.preview_scale_ratio)
+
+            self.parameters_changed.emit(self.image_scale, actual_offset_x, actual_offset_y)
     
     def set_parameters(self, scale, offset_x, offset_y):
-        """设置编辑参数"""
+        """设置编辑参数（从原图坐标系转换为预览坐标系）"""
         old_scale = self.image_scale
         self.image_scale = max(self.min_scale, min(self.max_scale, scale))
-        self.image_offset = QPoint(offset_x, offset_y)
+
+        # 将原图坐标系的偏移转换为预览坐标系
+        preview_offset_x = int(offset_x * self.preview_scale_ratio)
+        preview_offset_y = int(offset_y * self.preview_scale_ratio)
+        self.image_offset = QPoint(preview_offset_x, preview_offset_y)
 
         # 只有缩放改变时才清除缓存
         if old_scale != self.image_scale:
@@ -547,11 +555,15 @@ class InteractiveImageEditor(QLabel):
         actual_badge_radius_px = app_config.badge_radius_px
         crop_radius = actual_badge_radius_px / self.image_scale
         
+        # 返回原图坐标系的参数
+        actual_offset_x = int(self.image_offset.x() / self.preview_scale_ratio)
+        actual_offset_y = int(self.image_offset.y() / self.preview_scale_ratio)
+
         return {
             'center_x': crop_center_x,
             'center_y': crop_center_y,
             'radius': crop_radius,
             'scale': self.image_scale,
-            'offset_x': self.image_offset.x(),
-            'offset_y': self.image_offset.y()
+            'offset_x': actual_offset_x,
+            'offset_y': actual_offset_y
         }
