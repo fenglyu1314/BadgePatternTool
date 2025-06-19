@@ -55,6 +55,10 @@ class InteractiveImageEditor(QLabel):
         self._scale_timer.timeout.connect(self._delayed_scale_update)
         self._pending_scale = None
 
+        # 大图片优化：预缩放缓存
+        self._prescaled_cache = {}
+        self._max_prescale_cache = 3
+
         # 设置基本属性
         self.setMinimumSize(300, 300)
         self.setStyleSheet("""
@@ -158,13 +162,18 @@ class InteractiveImageEditor(QLabel):
         self._cache_size = None
         self._cache_valid = False
 
+        # 清除预缩放缓存
+        for key in list(self._prescaled_cache.keys()):
+            del self._prescaled_cache[key]
+        self._prescaled_cache.clear()
+
     def _is_cache_valid(self):
         """检查缓存是否有效"""
         if not self._cache_valid or not self._cached_pixmap:
             return False
 
-        # 检查缩放比例是否改变
-        if self._cache_scale != self.image_scale:
+        # 检查缩放比例是否改变（增加容差，减少频繁重建）
+        if self._cache_scale is None or abs(self._cache_scale - self.image_scale) > 0.01:
             return False
 
         # 检查图片尺寸是否改变
@@ -270,16 +279,39 @@ class InteractiveImageEditor(QLabel):
             scaled_width = int(img_width * self.image_scale)
             scaled_height = int(img_height * self.image_scale)
 
-            # 缩放图片
-            scaled_image = self.original_image.resize(
-                (scaled_width, scaled_height),
-                Image.Resampling.LANCZOS
-            )
+            # 优化：对大图片使用更高效的缩放策略
+            max_display_size = 2048  # 最大显示尺寸
+            if scaled_width > max_display_size or scaled_height > max_display_size:
+                # 大图片：先缩放到合理尺寸，再进行最终缩放
+                temp_scale = min(max_display_size / scaled_width, max_display_size / scaled_height)
+                temp_width = int(scaled_width * temp_scale)
+                temp_height = int(scaled_height * temp_scale)
+
+                # 两步缩放：先快速缩放，再精确缩放
+                temp_image = self.original_image.resize(
+                    (temp_width, temp_height),
+                    Image.Resampling.NEAREST  # 快速缩放
+                )
+                scaled_image = temp_image.resize(
+                    (scaled_width, scaled_height),
+                    Image.Resampling.LANCZOS  # 高质量缩放
+                )
+                del temp_image  # 立即释放临时图片
+            else:
+                # 小图片：直接高质量缩放
+                scaled_image = self.original_image.resize(
+                    (scaled_width, scaled_height),
+                    Image.Resampling.LANCZOS
+                )
 
             # 转换为QPixmap
             buffer = BytesIO()
             try:
-                scaled_image.save(buffer, format='PNG')
+                # 对大图片使用JPEG格式以减少内存使用
+                if scaled_width * scaled_height > 1024 * 1024:  # 大于1M像素
+                    scaled_image.save(buffer, format='JPEG', quality=95)
+                else:
+                    scaled_image.save(buffer, format='PNG')
                 buffer.seek(0)
 
                 pixmap = QPixmap()
@@ -393,8 +425,19 @@ class InteractiveImageEditor(QLabel):
             self.update()
 
             # 使用防抖定时器延迟更新缓存和信号
+            # 根据图片大小调整防抖延迟
+            if self.original_image:
+                img_width, img_height = self.original_image.size
+                pixel_count = img_width * img_height
+                if pixel_count > 2000000:  # 大于200万像素
+                    delay = 100  # 大图片使用更长延迟
+                else:
+                    delay = 50   # 小图片使用短延迟
+            else:
+                delay = 50
+
             self._scale_timer.stop()
-            self._scale_timer.start(50)  # 50ms防抖延迟
+            self._scale_timer.start(delay)
 
         event.accept()
 
@@ -415,23 +458,14 @@ class InteractiveImageEditor(QLabel):
         super().mousePressEvent(event)
     
     def mouseMoveEvent(self, event: QMouseEvent):
-        """鼠标移动事件（优化拖动响应速度）"""
+        """鼠标移动事件（1:1拖动响应）"""
         if self.dragging and event.buttons() == Qt.LeftButton:
             # 计算拖拽偏移
             delta = event.pos() - self.last_drag_point
 
-            # 优化：增加拖动敏感度，根据显示比例调整
-            sensitivity_factor = 2.0  # 增加拖动敏感度
-            if hasattr(self, 'display_to_actual_ratio') and self.display_to_actual_ratio > 0:
-                # 根据显示比例调整敏感度，确保拖动距离合理
-                adjusted_delta = QPoint(
-                    int(delta.x() * sensitivity_factor / self.display_to_actual_ratio),
-                    int(delta.y() * sensitivity_factor / self.display_to_actual_ratio)
-                )
-            else:
-                adjusted_delta = delta * sensitivity_factor
-
-            self.image_offset += adjusted_delta
+            # 优化：实现1:1的拖动响应，图片跟随鼠标移动
+            # 直接使用鼠标移动的像素距离，不进行任何缩放调整
+            self.image_offset += delta
             self.last_drag_point = event.pos()
 
             # 立即更新显示（拖动不影响缓存）
