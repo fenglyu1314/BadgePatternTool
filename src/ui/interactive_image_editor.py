@@ -35,7 +35,7 @@ class InteractiveImageEditor(QLabel):
         self.image_scale = 1.0  # 图片缩放比例
         self.image_offset = QPoint(0, 0)  # 图片偏移
         self.min_scale = 0.1
-        self.max_scale = 5.0
+        self.max_scale = 5.0  # 将根据图片大小动态调整
 
         # 圆形遮罩参数 - 使用配置中的徽章尺寸
         self.update_mask_radius()
@@ -57,9 +57,10 @@ class InteractiveImageEditor(QLabel):
         self._scale_timer.timeout.connect(self._delayed_scale_update)
         self._pending_scale = None
 
-        # 大图片优化：预缩放缓存
+        # 大图片优化：多级缓存
         self._prescaled_cache = {}
-        self._max_prescale_cache = 3
+        self._max_prescale_cache = 5
+        self._is_large_image = False  # 标记是否为大图片
 
         # 设置基本属性
         self.setMinimumSize(300, 300)
@@ -159,14 +160,25 @@ class InteractiveImageEditor(QLabel):
         self.image_scale = max(self.min_scale, min(self.max_scale, self.image_scale))
 
     def _create_preview_image(self):
-        """创建预览分辨率的图片（性能优化）"""
+        """创建预览分辨率的图片（激进优化策略）"""
         if not self.original_image:
             return
 
-        # 设置预览图片的最大尺寸（根据编辑器大小）
-        max_preview_size = 1024  # 预览图最大尺寸
-
         orig_width, orig_height = self.original_image.size
+        pixel_count = orig_width * orig_height
+
+        # 标记是否为大图片
+        self._is_large_image = pixel_count > 8000000  # 超过800万像素
+
+        # 根据原图大小动态调整预览尺寸
+        if pixel_count > 16000000:  # 超过1600万像素（4K+）
+            max_preview_size = 400   # 4K+图片使用400px预览，极致优化
+        elif pixel_count > 8000000:  # 超过800万像素
+            max_preview_size = 600   # 大图片使用600px预览
+        elif pixel_count > 2000000:  # 超过200万像素
+            max_preview_size = 800   # 中等图片使用800px预览
+        else:
+            max_preview_size = 1200  # 小图片可以使用更高分辨率
 
         # 计算预览图的缩放比例
         if orig_width > max_preview_size or orig_height > max_preview_size:
@@ -174,16 +186,45 @@ class InteractiveImageEditor(QLabel):
             preview_width = int(orig_width * scale_ratio)
             preview_height = int(orig_height * scale_ratio)
 
-            # 创建预览图片
-            self.preview_image = self.original_image.resize(
-                (preview_width, preview_height),
-                Image.Resampling.LANCZOS
-            )
+            # 对超大图片使用两步缩放策略
+            if pixel_count > 16000000:
+                # 第一步：快速缩放到中等尺寸
+                temp_size = 1024
+                temp_ratio = min(temp_size / orig_width, temp_size / orig_height)
+                temp_width = int(orig_width * temp_ratio)
+                temp_height = int(orig_height * temp_ratio)
+
+                temp_image = self.original_image.resize(
+                    (temp_width, temp_height),
+                    Image.Resampling.NEAREST  # 快速缩放
+                )
+
+                # 第二步：精确缩放到目标尺寸
+                self.preview_image = temp_image.resize(
+                    (preview_width, preview_height),
+                    Image.Resampling.LANCZOS  # 高质量缩放
+                )
+                del temp_image  # 立即释放
+            else:
+                # 普通图片直接缩放
+                self.preview_image = self.original_image.resize(
+                    (preview_width, preview_height),
+                    Image.Resampling.LANCZOS
+                )
+
             self.preview_scale_ratio = scale_ratio
         else:
             # 图片本身就不大，直接使用原图
             self.preview_image = self.original_image.copy()
             self.preview_scale_ratio = 1.0
+
+        # 根据图片大小动态调整最大缩放倍数
+        if pixel_count > 16000000:  # 4K+图片
+            self.max_scale = 3.0  # 限制最大缩放，避免性能问题
+        elif pixel_count > 8000000:  # 大图片
+            self.max_scale = 4.0
+        else:
+            self.max_scale = 5.0  # 小图片可以更大缩放
 
     def _invalidate_cache(self):
         """清除图片缓存"""
@@ -298,7 +339,7 @@ class InteractiveImageEditor(QLabel):
         painter.end()
     
     def create_image_pixmap(self):
-        """创建图片的QPixmap（使用预览图片优化性能）"""
+        """创建图片的QPixmap（多级缓存优化）"""
         if not self.preview_image:
             return None
 
@@ -312,11 +353,36 @@ class InteractiveImageEditor(QLabel):
             scaled_width = int(img_width * self.image_scale)
             scaled_height = int(img_height * self.image_scale)
 
-            # 优化：使用预览图片进行缩放，性能大幅提升
-            scaled_image = self.preview_image.resize(
-                (scaled_width, scaled_height),
-                Image.Resampling.LANCZOS
-            )
+            # 对大图片使用更激进的优化策略
+            if self._is_large_image and self.image_scale > 2.0:
+                # 大图片高倍缩放：使用更小的中间尺寸
+                intermediate_scale = min(2.0, self.image_scale / 2.0)
+                intermediate_width = int(img_width * intermediate_scale)
+                intermediate_height = int(img_height * intermediate_scale)
+
+                # 两步缩放：先缩放到中间尺寸，再缩放到目标尺寸
+                intermediate_image = self.preview_image.resize(
+                    (intermediate_width, intermediate_height),
+                    Image.Resampling.NEAREST  # 快速缩放
+                )
+
+                scaled_image = intermediate_image.resize(
+                    (scaled_width, scaled_height),
+                    Image.Resampling.LANCZOS  # 高质量缩放
+                )
+                del intermediate_image  # 立即释放
+            else:
+                # 普通情况：直接缩放
+                # 对于大倍数缩放，使用NEAREST算法提升性能
+                if self.image_scale > 2.5:
+                    resample_method = Image.Resampling.NEAREST
+                else:
+                    resample_method = Image.Resampling.LANCZOS
+
+                scaled_image = self.preview_image.resize(
+                    (scaled_width, scaled_height),
+                    resample_method
+                )
 
             # 转换为QPixmap（预览图片，性能优化）
             buffer = BytesIO()
@@ -436,8 +502,13 @@ class InteractiveImageEditor(QLabel):
             self.update()
 
             # 使用防抖定时器延迟更新缓存和信号
-            # 由于使用预览图片，可以使用更短的延迟
-            delay = 30  # 预览图片性能好，使用短延迟
+            # 根据图片大小和缩放倍数动态调整延迟
+            if self._is_large_image and self.image_scale > 2.0:
+                delay = 100  # 大图片高倍缩放使用长延迟
+            elif self._is_large_image:
+                delay = 60   # 大图片使用中等延迟
+            else:
+                delay = 30   # 小图片使用短延迟
 
             self._scale_timer.stop()
             self._scale_timer.start(delay)
