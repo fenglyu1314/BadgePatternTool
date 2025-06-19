@@ -90,10 +90,19 @@ class InteractiveImageEditor(QLabel):
         # 重要：保存显示半径，用于与实际徽章半径的比例计算
         self.mask_radius = base_display_radius
 
-        # 计算显示半径与实际徽章半径的比例
-        # 这个比例将用于确保预览效果与实际裁剪效果一致
-        actual_radius_px = app_config.badge_radius_px  # 实际半径（约401像素）
-        self.display_to_actual_ratio = self.mask_radius / actual_radius_px
+        # 关键修复：计算遮罩与预览图的比例关系
+        # 这个比例用于确保单图编辑器的预览效果与A4排版完全一致
+        actual_radius_px = app_config.badge_radius_px  # 实际徽章半径（约401像素）
+
+        # 如果有预览图，使用预览图的比例关系
+        if hasattr(self, 'preview_scale_ratio') and self.preview_scale_ratio > 0:
+            # 预览图中的徽章半径 = 实际徽章半径 * 预览缩放比例
+            preview_badge_radius = actual_radius_px * self.preview_scale_ratio
+            # 显示比例 = 显示半径 / 预览图中的徽章半径
+            self.display_to_actual_ratio = self.mask_radius / preview_badge_radius
+        else:
+            # 降级处理：直接使用实际半径
+            self.display_to_actual_ratio = self.mask_radius / actual_radius_px
 
     def load_image(self, image_path):
         """加载图片（优化：使用预览分辨率提升性能）"""
@@ -109,6 +118,7 @@ class InteractiveImageEditor(QLabel):
             self._create_preview_image()
 
             # 重新计算遮罩半径和比例（确保比例正确）
+            # 必须在创建预览图之后调用，因为需要preview_scale_ratio
             self.update_mask_radius()
 
             # 计算初始缩放比例（使图片适应编辑器大小）
@@ -259,36 +269,39 @@ class InteractiveImageEditor(QLabel):
         return True
     
     def get_image_rect(self):
-        """获取当前图片的显示矩形"""
-        if not self.original_image:
+        """获取当前图片的显示矩形（模拟图片处理器算法）"""
+        if not self.preview_image:
             return QRect()
 
-        # 计算缩放后的图片尺寸
-        img_width, img_height = self.original_image.size
+        # 使用预览图尺寸进行计算，确保与实际显示一致
+        img_width, img_height = self.preview_image.size
         scaled_width = int(img_width * self.image_scale)
         scaled_height = int(img_height * self.image_scale)
 
-        # 关键修复：将实际尺寸按显示比例缩放，确保预览与实际裁剪一致
-        if hasattr(self, 'display_to_actual_ratio'):
-            display_scaled_width = int(scaled_width * self.display_to_actual_ratio)
-            display_scaled_height = int(scaled_height * self.display_to_actual_ratio)
-        else:
-            # 降级处理：如果比例未计算，使用原始逻辑
-            display_scaled_width = scaled_width
-            display_scaled_height = scaled_height
-
-        # 计算图片在编辑器中的位置（居中 + 偏移）
+        # 编辑器中心（对应圆形遮罩中心）
         editor_center_x = self.width() // 2
         editor_center_y = self.height() // 2
 
-        # 优化：偏移量直接使用，不进行比例缩放，确保拖动响应自然
-        display_offset_x = self.image_offset.x()
-        display_offset_y = self.image_offset.y()
+        # 关键修复：使用与图片处理器完全相同的算法
+        # 图片处理器算法：paste_x = center_x - img_width // 2 + offset_x
+        # 这里需要将原图偏移转换为预览图偏移进行显示
 
-        img_x = editor_center_x - display_scaled_width // 2 + display_offset_x
-        img_y = editor_center_y - display_scaled_height // 2 + display_offset_y
+        # 将原图坐标系的偏移转换为预览坐标系（用于显示）
+        if self.preview_scale_ratio > 0:
+            # 从emit_parameters_changed反推：actual_offset = preview_offset / ratio
+            # 所以：preview_offset = actual_offset * ratio
+            # 但这里我们需要显示用的偏移，直接使用当前的预览偏移
+            display_offset_x = self.image_offset.x()
+            display_offset_y = self.image_offset.y()
+        else:
+            display_offset_x = self.image_offset.x()
+            display_offset_y = self.image_offset.y()
 
-        return QRect(img_x, img_y, display_scaled_width, display_scaled_height)
+        # 计算图片左上角位置（与图片处理器算法保持一致）
+        img_x = editor_center_x - scaled_width // 2 + display_offset_x
+        img_y = editor_center_y - scaled_height // 2 + display_offset_y
+
+        return QRect(img_x, img_y, scaled_width, scaled_height)
     
     def get_mask_rect(self):
         """获取圆形遮罩的矩形"""
@@ -664,4 +677,15 @@ class InteractiveImageEditor(QLabel):
             actual_offset_y = self.image_offset.y()
 
         print(f"原图偏移: ({actual_offset_x}, {actual_offset_y})")
+
+        # 调试遮罩和图片位置关系
+        print(f"=== 显示调试信息 ===")
+        print(f"编辑器尺寸: {self.width()}x{self.height()}")
+        print(f"遮罩半径: {self.mask_radius}")
+        print(f"显示到实际比例: {self.display_to_actual_ratio}")
+
+        mask_rect = self.get_mask_rect()
+        img_rect = self.get_image_rect()
+        print(f"遮罩矩形: ({mask_rect.x()}, {mask_rect.y()}, {mask_rect.width()}, {mask_rect.height()})")
+        print(f"图片矩形: ({img_rect.x()}, {img_rect.y()}, {img_rect.width()}, {img_rect.height()})")
         print(f"===================")
