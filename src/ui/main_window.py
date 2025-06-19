@@ -1133,7 +1133,10 @@ class MainWindow(QMainWindow):
 
             # 同步到交互式编辑器（立即更新，位置变化不影响缓存）
             if hasattr(self, 'interactive_editor') and self.interactive_editor.original_image:
-                self.interactive_editor.image_offset = QPoint(offset_x, offset_y)
+                # 需要将原图坐标系的偏移转换为预览坐标系
+                preview_offset_x = int(offset_x * self.interactive_editor.preview_scale_ratio)
+                preview_offset_y = int(offset_y * self.interactive_editor.preview_scale_ratio)
+                self.interactive_editor.image_offset = QPoint(preview_offset_x, preview_offset_y)
                 self.interactive_editor.update()
 
             # 使用防抖定时器延迟更新预览

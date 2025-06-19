@@ -90,19 +90,13 @@ class InteractiveImageEditor(QLabel):
         # 重要：保存显示半径，用于与实际徽章半径的比例计算
         self.mask_radius = base_display_radius
 
-        # 关键修复：计算遮罩与预览图的比例关系
-        # 这个比例用于确保单图编辑器的预览效果与A4排版完全一致
+        # 关键修复：确保遮罩大小与A4预览中的圆形大小一致
+        # A4预览中使用的是实际徽章半径，所以这里也应该基于实际半径计算
         actual_radius_px = app_config.badge_radius_px  # 实际徽章半径（约401像素）
 
-        # 如果有预览图，使用预览图的比例关系
-        if hasattr(self, 'preview_scale_ratio') and self.preview_scale_ratio > 0:
-            # 预览图中的徽章半径 = 实际徽章半径 * 预览缩放比例
-            preview_badge_radius = actual_radius_px * self.preview_scale_ratio
-            # 显示比例 = 显示半径 / 预览图中的徽章半径
-            self.display_to_actual_ratio = self.mask_radius / preview_badge_radius
-        else:
-            # 降级处理：直接使用实际半径
-            self.display_to_actual_ratio = self.mask_radius / actual_radius_px
+        # 计算显示比例：显示半径 / 实际半径
+        # 这个比例用于将实际坐标转换为显示坐标
+        self.display_to_actual_ratio = self.mask_radius / actual_radius_px
 
     def load_image(self, image_path):
         """加载图片（优化：使用预览分辨率提升性能）"""
@@ -269,39 +263,34 @@ class InteractiveImageEditor(QLabel):
         return True
     
     def get_image_rect(self):
-        """获取当前图片的显示矩形（模拟图片处理器算法）"""
-        if not self.preview_image:
+        """获取当前图片的显示矩形（与A4预览保持一致的算法）"""
+        if not self.original_image:
             return QRect()
 
-        # 使用预览图尺寸进行计算，确保与实际显示一致
-        img_width, img_height = self.preview_image.size
-        scaled_width = int(img_width * self.image_scale)
-        scaled_height = int(img_height * self.image_scale)
+        # 关键修复：使用原图尺寸和实际缩放比例，确保与A4预览一致
+        # A4预览中使用的是原图尺寸 * image_scale，这里也应该使用相同的计算方式
+        orig_width, orig_height = self.original_image.size
+        scaled_width = int(orig_width * self.image_scale)
+        scaled_height = int(orig_height * self.image_scale)
+
+        # 将实际尺寸转换为显示尺寸（使用display_to_actual_ratio）
+        display_width = int(scaled_width * self.display_to_actual_ratio)
+        display_height = int(scaled_height * self.display_to_actual_ratio)
 
         # 编辑器中心（对应圆形遮罩中心）
         editor_center_x = self.width() // 2
         editor_center_y = self.height() // 2
 
-        # 关键修复：使用与图片处理器完全相同的算法
-        # 图片处理器算法：paste_x = center_x - img_width // 2 + offset_x
-        # 这里需要将原图偏移转换为预览图偏移进行显示
-
-        # 将原图坐标系的偏移转换为预览坐标系（用于显示）
-        if self.preview_scale_ratio > 0:
-            # 从emit_parameters_changed反推：actual_offset = preview_offset / ratio
-            # 所以：preview_offset = actual_offset * ratio
-            # 但这里我们需要显示用的偏移，直接使用当前的预览偏移
-            display_offset_x = self.image_offset.x()
-            display_offset_y = self.image_offset.y()
-        else:
-            display_offset_x = self.image_offset.x()
-            display_offset_y = self.image_offset.y()
+        # 简化偏移计算：直接使用image_offset作为显示偏移
+        # 这样与简化的拖动逻辑保持一致，确保1:1响应
+        display_offset_x = self.image_offset.x()
+        display_offset_y = self.image_offset.y()
 
         # 计算图片左上角位置（与图片处理器算法保持一致）
-        img_x = editor_center_x - scaled_width // 2 + display_offset_x
-        img_y = editor_center_y - scaled_height // 2 + display_offset_y
+        img_x = editor_center_x - display_width // 2 + display_offset_x
+        img_y = editor_center_y - display_height // 2 + display_offset_y
 
-        return QRect(img_x, img_y, scaled_width, scaled_height)
+        return QRect(img_x, img_y, display_width, display_height)
     
     def get_mask_rect(self):
         """获取圆形遮罩的矩形"""
@@ -352,8 +341,8 @@ class InteractiveImageEditor(QLabel):
         painter.end()
     
     def create_image_pixmap(self):
-        """创建图片的QPixmap（多级缓存优化）"""
-        if not self.preview_image:
+        """创建图片的QPixmap（与A4预览保持一致的尺寸计算）"""
+        if not self.original_image:
             return None
 
         # 检查缓存是否有效
@@ -361,40 +350,54 @@ class InteractiveImageEditor(QLabel):
             return self._cached_pixmap
 
         try:
-            # 使用预览图片进行显示（性能优化）
-            img_width, img_height = self.preview_image.size
-            scaled_width = int(img_width * self.image_scale)
-            scaled_height = int(img_height * self.image_scale)
+            # 关键修复：使用原图尺寸计算，确保与A4预览一致
+            orig_width, orig_height = self.original_image.size
+            scaled_width = int(orig_width * self.image_scale)
+            scaled_height = int(orig_height * self.image_scale)
 
-            # 对大图片使用更激进的优化策略
-            if self._is_large_image and self.image_scale > 2.0:
-                # 大图片高倍缩放：使用更小的中间尺寸
-                intermediate_scale = min(2.0, self.image_scale / 2.0)
-                intermediate_width = int(img_width * intermediate_scale)
-                intermediate_height = int(img_height * intermediate_scale)
+            # 转换为显示尺寸
+            display_width = int(scaled_width * self.display_to_actual_ratio)
+            display_height = int(scaled_height * self.display_to_actual_ratio)
 
-                # 两步缩放：先缩放到中间尺寸，再缩放到目标尺寸
-                intermediate_image = self.preview_image.resize(
-                    (intermediate_width, intermediate_height),
-                    Image.Resampling.NEAREST  # 快速缩放
-                )
+            # 使用预览图进行缩放（性能优化），但最终尺寸要匹配显示需求
+            if self.preview_image:
+                preview_width, preview_height = self.preview_image.size
 
-                scaled_image = intermediate_image.resize(
-                    (scaled_width, scaled_height),
-                    Image.Resampling.LANCZOS  # 高质量缩放
-                )
-                del intermediate_image  # 立即释放
-            else:
-                # 普通情况：直接缩放
-                # 对于大倍数缩放，使用NEAREST算法提升性能
-                if self.image_scale > 2.5:
-                    resample_method = Image.Resampling.NEAREST
+                # 对大图片使用更激进的优化策略
+                if self._is_large_image and self.image_scale > 2.0:
+                    # 大图片高倍缩放：使用更小的中间尺寸
+                    intermediate_scale = min(2.0, self.image_scale / 2.0)
+                    intermediate_width = int(preview_width * intermediate_scale)
+                    intermediate_height = int(preview_height * intermediate_scale)
+
+                    # 两步缩放：先缩放到中间尺寸，再缩放到目标尺寸
+                    intermediate_image = self.preview_image.resize(
+                        (intermediate_width, intermediate_height),
+                        Image.Resampling.NEAREST  # 快速缩放
+                    )
+
+                    scaled_image = intermediate_image.resize(
+                        (display_width, display_height),
+                        Image.Resampling.LANCZOS  # 高质量缩放
+                    )
+                    del intermediate_image  # 立即释放
                 else:
-                    resample_method = Image.Resampling.LANCZOS
+                    # 普通情况：直接缩放到显示尺寸
+                    # 对于大倍数缩放，使用NEAREST算法提升性能
+                    if self.image_scale > 2.5:
+                        resample_method = Image.Resampling.NEAREST
+                    else:
+                        resample_method = Image.Resampling.LANCZOS
 
-                scaled_image = self.preview_image.resize(
-                    (scaled_width, scaled_height),
-                    resample_method
+                    scaled_image = self.preview_image.resize(
+                        (display_width, display_height),
+                        resample_method
+                    )
+            else:
+                # 降级处理：直接使用原图
+                scaled_image = self.original_image.resize(
+                    (display_width, display_height),
+                    Image.Resampling.LANCZOS
                 )
 
             # 转换为QPixmap（预览图片，性能优化）
@@ -410,7 +413,7 @@ class InteractiveImageEditor(QLabel):
                 # 更新缓存
                 self._cached_pixmap = pixmap
                 self._cache_scale = self.image_scale
-                self._cache_size = self.preview_image.size
+                self._cache_size = self.original_image.size
                 self._cache_valid = True
 
                 return pixmap
@@ -545,19 +548,21 @@ class InteractiveImageEditor(QLabel):
         super().mousePressEvent(event)
     
     def mouseMoveEvent(self, event: QMouseEvent):
-        """鼠标移动事件（1:1拖动响应）"""
+        """鼠标移动事件（简化的1:1拖动响应）"""
         if self.dragging and event.buttons() == Qt.LeftButton:
             # 计算拖拽偏移
             delta = event.pos() - self.last_drag_point
 
-            # 优化：实现1:1的拖动响应，图片跟随鼠标移动
-            # 直接使用鼠标移动的像素距离，不进行任何缩放调整
+            # 简化方案：直接使用鼠标移动距离，不进行复杂的坐标转换
+            # 这样可以确保1:1的拖动响应，避免计算错误导致的中断
             self.image_offset += delta
             self.last_drag_point = event.pos()
 
             # 立即更新显示（拖动不影响缓存）
             self.update()
-            self.emit_parameters_changed()
+
+            # 优化：拖动过程中不发送信号，避免干扰拖动状态
+            # 信号将在鼠标释放时发送
         else:
             # 设置光标
             if self.original_image:
@@ -570,37 +575,50 @@ class InteractiveImageEditor(QLabel):
     def mouseReleaseEvent(self, event: QMouseEvent):
         """鼠标释放事件"""
         if event.button() == Qt.LeftButton:
+            was_dragging = self.dragging
             self.dragging = False
+
+            # 如果刚才在拖动，现在发送参数改变信号
+            if was_dragging and self.original_image:
+                self.emit_parameters_changed()
+
             if self.original_image:
                 self.setCursor(Qt.OpenHandCursor)
             else:
                 self.setCursor(Qt.ArrowCursor)
-        
+
         super().mouseReleaseEvent(event)
     
     def emit_parameters_changed(self):
-        """发送参数改变信号（转换为原图坐标系）"""
+        """发送参数改变信号（简化的坐标转换）"""
         if self.original_image:
-            # 将预览坐标系的偏移转换为原图坐标系
-            # 注意：偏移量需要考虑预览图与原图的比例关系
-            if self.preview_scale_ratio > 0:
-                actual_offset_x = int(self.image_offset.x() / self.preview_scale_ratio)
-                actual_offset_y = int(self.image_offset.y() / self.preview_scale_ratio)
+            # 简化方案：将显示偏移转换为原图坐标系
+            # 考虑显示比例和预览比例的综合影响
+            if self.preview_scale_ratio > 0 and self.display_to_actual_ratio > 0:
+                # 显示偏移 -> 实际偏移 -> 原图偏移
+                actual_offset_x = int(self.image_offset.x() / self.display_to_actual_ratio)
+                actual_offset_y = int(self.image_offset.y() / self.display_to_actual_ratio)
             else:
+                # 降级处理
                 actual_offset_x = self.image_offset.x()
                 actual_offset_y = self.image_offset.y()
 
             self.parameters_changed.emit(self.image_scale, actual_offset_x, actual_offset_y)
     
     def set_parameters(self, scale, offset_x, offset_y):
-        """设置编辑参数（从原图坐标系转换为预览坐标系）"""
+        """设置编辑参数（简化的坐标转换）"""
         old_scale = self.image_scale
         self.image_scale = max(self.min_scale, min(self.max_scale, scale))
 
-        # 将原图坐标系的偏移转换为预览坐标系
-        preview_offset_x = int(offset_x * self.preview_scale_ratio)
-        preview_offset_y = int(offset_y * self.preview_scale_ratio)
-        self.image_offset = QPoint(preview_offset_x, preview_offset_y)
+        # 简化方案：将原图坐标系的偏移转换为显示坐标系
+        if self.display_to_actual_ratio > 0:
+            # 原图偏移 -> 显示偏移
+            display_offset_x = int(offset_x * self.display_to_actual_ratio)
+            display_offset_y = int(offset_y * self.display_to_actual_ratio)
+            self.image_offset = QPoint(display_offset_x, display_offset_y)
+        else:
+            # 降级处理
+            self.image_offset = QPoint(offset_x, offset_y)
 
         # 只有缩放改变时才清除缓存
         if old_scale != self.image_scale:
