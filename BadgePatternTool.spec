@@ -80,22 +80,173 @@ a = Analysis(
         'unittest',
         'doctest',
         'pydoc',
-        # 注意：不能排除以下模块，因为reportlab需要它们
-        # 'xml',
-        # 'xmlrpc',
-        # 'email',
-        # 'http',
-        # 'urllib3',
-        # 'ssl',
-        # 'socket',
+
+        # 网络相关模块 (reportlab需要部分，谨慎排除)
         'requests',
+        'urllib3',
+        'email',
+        'smtplib',
+        'poplib',
+        'imaplib',
+        'ftplib',
+        'telnetlib',
+        'socketserver',
+        'http.server',
+        'http.client',
+        'http.cookies',
+        'xmlrpc',
+
+        # 其他不需要的标准库
+        'curses',
+        'dbm',
+        'ensurepip',
+        'idlelib',
+        'lib2to3',
+        'pydoc_data',
+        'turtle',
+        'turtledemo',
+        'venv',
+        'wsgiref',
+        'ctypes.test',
+        'json.tests',
+        'logging.config',
+        'logging.handlers',
+        'msilib',
+        'optparse',
+        'plistlib',
+        'pty',
+        'readline',
+        'rlcompleter',
+        'sched',
+        'shelve',
+        'statistics',
+        'stringprep',
+        'symbol',
+        'tabnanny',
+        'this',
+        'timeit',
+        'trace',
+        'tty',
+        'webbrowser',
+
+        # 数据库和并发
         'sqlite3',
         'asyncio',
         'multiprocessing',
         'concurrent',
+
+        # 构建和打包工具
         'distutils',
         'setuptools',
         'pkg_resources',
+        'pip',
+        'wheel',
+
+        # Qt6额外模块
+        'PySide6.QtSvg',
+        'PySide6.QtSvgWidgets',
+        'PySide6.QtNetwork',
+        'PySide6.QtConcurrent',
+        'PySide6.QtSql',
+        'PySide6.QtTest',
+        'PySide6.QtQuick',
+        'PySide6.QtQml',
+        'PySide6.QtWebEngine',
+        'PySide6.QtWebEngineCore',
+        'PySide6.QtWebEngineWidgets',
+        'PySide6.QtMultimedia',
+        'PySide6.QtMultimediaWidgets',
+        'PySide6.QtOpenGL',
+        'PySide6.QtOpenGLWidgets',
+        'PySide6.Qt3DCore',
+        'PySide6.Qt3DRender',
+        'PySide6.Qt3DInput',
+        'PySide6.Qt3DLogic',
+        'PySide6.Qt3DAnimation',
+        'PySide6.Qt3DExtras',
+        'PySide6.QtCharts',
+        'PySide6.QtDataVisualization',
+        'PySide6.QtDesigner',
+        'PySide6.QtHelp',
+        'PySide6.QtLocation',
+        'PySide6.QtPositioning',
+        'PySide6.QtSensors',
+        'PySide6.QtSerialPort',
+        'PySide6.QtWebChannel',
+        'PySide6.QtWebSockets',
+        'PySide6.QtXml',
+        'PySide6.QtXmlPatterns',
+        'PySide6.QtBluetooth',
+        'PySide6.QtNfc',
+        'PySide6.QtRemoteObjects',
+        'PySide6.QtScxml',
+        'PySide6.QtStateMachine',
+        'PySide6.QtUiTools',
+        'PySide6.QtWebView',
+
+        # PIL/Pillow不需要的格式支持
+        'PIL.IcnsImagePlugin',
+        'PIL.IcoImagePlugin',
+        'PIL.ImImagePlugin',
+        'PIL.McIdasImagePlugin',
+        'PIL.MicImagePlugin',
+        'PIL.MpoImagePlugin',
+        'PIL.PcdImagePlugin',
+        'PIL.PcxImagePlugin',
+        'PIL.PdfImagePlugin',
+        'PIL.PixarImagePlugin',
+        'PIL.PpmImagePlugin',
+        'PIL.PsdImagePlugin',
+        'PIL.SgiImagePlugin',
+        'PIL.SpiderImagePlugin',
+        'PIL.SunImagePlugin',
+        'PIL.TgaImagePlugin',
+        'PIL.WebPImagePlugin',
+        'PIL.WmfImagePlugin',
+        'PIL.XbmImagePlugin',
+        'PIL.XpmImagePlugin',
+        'PIL.XVThumbImagePlugin',
+
+        # PIL字体和其他功能
+        'PIL.ImageFont',
+        'PIL.ImageMath',
+        'PIL.ImagePath',
+        'PIL.ImageQt',
+        'PIL.ImageShow',
+        'PIL.ImageTk',
+        'PIL.ImageWin',
+
+        # ReportLab高级功能模块 (新增优化)
+        'reportlab.graphics',
+        'reportlab.platypus.tableofcontents',
+        'reportlab.platypus.xpreformatted',
+        'reportlab.lib.styles',
+        'reportlab.lib.units',
+        'reportlab.lib.enums',
+        'reportlab.lib.sequencer',
+        'reportlab.lib.randomtext',
+        'reportlab.lib.testutils',
+        'reportlab.lib.validators',
+        'reportlab.pdfbase.pdfutils',
+        'reportlab.pdfbase.pdfdoc',
+        'reportlab.pdfbase.pdfpattern',
+        'reportlab.pdfbase.cidfonts',
+        'reportlab.pdfbase.ttfonts',
+        'reportlab.pdfbase.afm',
+        'reportlab.rl_config',
+
+        # 更多编码和压缩模块 (新增优化)
+        'bz2',
+        'lzma',
+        'gzip',
+        'zipfile',
+        'tarfile',
+        'base64',
+        'binascii',
+        'codecs',
+        'locale',
+        'gettext',
+        'unicodedata',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
@@ -107,18 +258,25 @@ a = Analysis(
 def remove_unnecessary_files(a):
     """移除不必要的文件以减小大小"""
     excludes = [
+        # Windows系统DLL
         'api-ms-win-',
         'ucrtbase.dll',
         'msvcp140.dll',
         'vcruntime140.dll',
+
+        # Qt6模块DLL
         'Qt6Network',
         'Qt6Sql',
         'Qt6Test',
         'Qt6Quick',
         'Qt6Qml',
         'Qt6WebEngine',
+        'Qt6WebEngineCore',
+        'Qt6WebEngineWidgets',
         'Qt6Multimedia',
+        'Qt6MultimediaWidgets',
         'Qt6OpenGL',
+        'Qt6OpenGLWidgets',
         'Qt63D',
         'Qt6Charts',
         'Qt6DataVisualization',
@@ -132,10 +290,28 @@ def remove_unnecessary_files(a):
         'Qt6WebSockets',
         'Qt6Xml',
         'Qt6XmlPatterns',
+        'Qt6Svg',
+        'Qt6SvgWidgets',
+        'Qt6Concurrent',
+        'Qt6Bluetooth',
+        'Qt6Nfc',
+        'Qt6RemoteObjects',
+        'Qt6Scxml',
+        'Qt6StateMachine',
+        'Qt6UiTools',
+        'Qt6WebView',
+
+        # OpenGL相关
         'opengl32sw.dll',
         'libEGL.dll',
         'libGLESv2.dll',
         'd3dcompiler_47.dll',
+
+        # 其他不需要的DLL
+        'mf.dll',
+        'mfplat.dll',
+        'mfreadwrite.dll',
+        'propsys.dll',
     ]
     
     # 过滤二进制文件
@@ -143,20 +319,47 @@ def remove_unnecessary_files(a):
     
     # 过滤数据文件
     excludes_data = [
+        # Qt翻译和文档
         'translations',
         'qml',
         'examples',
         'doc',
+        'docs',
         'include',
         'mkspecs',
+
+        # Qt平台插件 (只保留必需的)
         'plugins/platforms/qminimal',
         'plugins/platforms/qoffscreen',
+        'plugins/platforms/qlinuxfb',
+        'plugins/platforms/qvnc',
+
+        # 图像格式插件 (只保留JPG/PNG/BMP)
         'plugins/imageformats/qico',
         'plugins/imageformats/qicns',
         'plugins/imageformats/qtga',
         'plugins/imageformats/qtiff',
         'plugins/imageformats/qwbmp',
         'plugins/imageformats/qwebp',
+        'plugins/imageformats/qsvg',
+        'plugins/imageformats/qpdf',
+
+        # 其他不需要的插件
+        'plugins/multimedia',
+        'plugins/sqldrivers',
+        'plugins/bearer',
+        'plugins/position',
+        'plugins/sensors',
+        'plugins/webview',
+        'plugins/printsupport/cupsprintersupport',
+
+        # 字体文件 (保留系统默认)
+        'fonts',
+
+        # 其他资源
+        'resources',
+        'lib/python3.11/site-packages/PySide6/examples',
+        'lib/python3.11/site-packages/PySide6/docs',
     ]
     
     a.datas = [x for x in a.datas if not any(exclude in x[0] for exclude in excludes_data)]
@@ -179,8 +382,15 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=True,  # 去除调试信息
-    upx=False,   # 禁用UPX压缩（避免兼容性问题）
-    upx_exclude=[],
+    upx=True,    # 启用UPX压缩以减小文件大小
+    upx_exclude=[
+        # 排除可能有兼容性问题的文件
+        'vcruntime140.dll',
+        'python311.dll',
+        'Qt6Core.dll',
+        'Qt6Gui.dll',
+        'Qt6Widgets.dll',
+    ],
     runtime_tmpdir=None,
     console=False,  # 无控制台窗口
     disable_windowed_traceback=False,
