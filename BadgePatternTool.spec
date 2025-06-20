@@ -393,6 +393,8 @@ exe = EXE(
         'Qt6Gui.dll',
         'Qt6Widgets.dll',
     ],
+    # 注意：现代Windows PE文件启用了GUARD_CF，UPX需要--force参数
+    # 但PyInstaller的UPX集成可能不支持，需要手动压缩
     runtime_tmpdir=None,
     console=False,  # 无控制台窗口
     disable_windowed_traceback=False,
