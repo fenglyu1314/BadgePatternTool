@@ -5,6 +5,12 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.5.1] - 2025-06-20
+
+### 修复
+- **🔧 CI/CD修复**: 升级GitHub Actions中的actions/upload-artifact从v3到v4，解决弃用警告问题
+
+
 ## [1.5.0] - 2025-06-20
 
 ### 新增
