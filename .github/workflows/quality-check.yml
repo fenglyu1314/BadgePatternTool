@@ -32,16 +32,26 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y \
-          libgl1-mesa-glx \
-          libegl1-mesa \
+          libgl1-mesa-dev \
+          libglu1-mesa-dev \
+          libegl1-mesa-dev \
           libxrandr2 \
           libxss1 \
           libxcursor1 \
           libxcomposite1 \
-          libasound2 \
+          libasound2-dev \
           libxi6 \
           libxtst6 \
-          xvfb
+          xvfb \
+          libxkbcommon-x11-0 \
+          libxcb-icccm4 \
+          libxcb-image0 \
+          libxcb-keysyms1 \
+          libxcb-randr0 \
+          libxcb-render-util0 \
+          libxcb-xinerama0 \
+          libfontconfig1 \
+          libdbus-1-3
 
     - name: Setup virtual display
       run: |
