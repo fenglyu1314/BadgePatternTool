@@ -5,6 +5,24 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.5.0] - 2025-06-20
+
+### 新增
+- **🚀 GitHub Actions自动发布**: 新增完整的CI/CD流程，支持自动构建和发布
+  - 自动构建工作流：推送到develop分支时自动构建exe文件
+  - 手动构建工作流：支持手动触发构建任务
+  - 发布工作流：创建release时自动构建并上传exe文件到GitHub Releases
+- **📦 自动化发布脚本**: 新增release.py脚本，简化版本发布流程
+
+### 改进
+- **🔧 构建配置优化**: 修复PyInstaller .spec文件中的__file__变量问题
+- **📚 文档更新**: 更新README.md以反映当前项目状态和新增功能
+- **🛠️ 开发流程改进**: 完善版本管理和发布流程，提升开发效率
+
+### 修复
+- **🐛 打包问题修复**: 解决PyInstaller构建过程中的路径问题
+
+
 ## [1.4.0] - 2025-06-20
 
 ### 新增
