@@ -58,6 +58,12 @@ jobs:
         echo "=== assets目录 ==="
         if (Test-Path "src/assets") { Get-ChildItem src/assets/ -Force } else { echo "assets目录不存在" }
 
+    - name: 运行代码质量检查
+      run: |
+        echo "=== 代码质量检查 ==="
+        python scripts/dev_tools.py quality
+        echo "质量检查完成"
+
     - name: 运行CI测试
       run: |
         echo "=== 运行CI安全测试 ==="
