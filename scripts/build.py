@@ -211,7 +211,7 @@ def create_installer_info():
 如遇到问题，请查看文档或联系开发者。
 
 ---
-BadgePatternTool v1.5.1 (优化版)
+BadgePatternTool v1.5.2 (优化版)
 构建时间: {Path(__file__).stat().st_mtime}
 """
 

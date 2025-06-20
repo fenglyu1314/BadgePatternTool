@@ -5,6 +5,16 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.5.2] - 2025-06-20
+
+### 修复
+- **🔧 CI/CD构建修复**: 修复GitHub Actions构建失败问题
+  - 简化依赖安装，只安装核心依赖和PyInstaller
+  - 添加项目结构验证步骤，便于调试构建问题
+  - 修复artifact上传路径问题，确保构建产物正确上传
+  - 本地构建测试通过，exe文件大小31.9MB
+
+
 ## [1.5.1] - 2025-06-20
 
 ### 修复
