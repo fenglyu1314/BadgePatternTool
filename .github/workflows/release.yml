@@ -6,6 +6,12 @@ on:
       - 'v*'  # 当推送以v开头的标签时触发（如v1.4.1）
   workflow_dispatch:  # 允许手动触发
 
+# 添加必要的权限
+permissions:
+  contents: write  # 允许创建release和上传文件
+  actions: read    # 允许读取actions
+  checks: write    # 允许写入检查结果
+
 jobs:
   build-and-release:
     runs-on: windows-latest
@@ -66,7 +72,7 @@ jobs:
         Copy-Item "dist/BadgePatternTool.exe" "release/"
         Copy-Item "dist/README.md" "release/" -ErrorAction SilentlyContinue
         Copy-Item "dist/CHANGELOG.md" "release/" -ErrorAction SilentlyContinue
-        Copy-Item "dist/安装说明.txt" "release/" -ErrorAction SilentlyContinue
+        Copy-Item "dist/User_Guide.txt" "release/" -ErrorAction SilentlyContinue
         
         # 复制文档目录
         if (Test-Path "dist/docs") {
