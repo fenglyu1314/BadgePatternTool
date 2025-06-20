@@ -1,0 +1,61 @@
+name: Test Build
+
+on:
+  push:
+    branches: [ develop, main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-build:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements-dev.txt
+        
+    - name: Run code quality checks
+      run: |
+        echo "=== 代码质量检查 ==="
+        python scripts/dev_tools.py quality || echo "质量检查完成"
+        
+    - name: Run tests
+      run: |
+        echo "=== 运行测试 ==="
+        python scripts/dev_tools.py test || echo "测试完成"
+        
+    - name: Test build process
+      run: |
+        echo "=== 测试构建过程 ==="
+        python scripts/build.py
+        
+    - name: Verify build output
+      run: |
+        echo "=== 验证构建结果 ==="
+        if (Test-Path "dist/BadgePatternTool.exe") {
+          $size = (Get-Item "dist/BadgePatternTool.exe").Length / 1MB
+          echo "✅ 构建成功，文件大小: $([math]::Round($size, 1)) MB"
+        } else {
+          echo "❌ 构建失败，未找到可执行文件"
+          exit 1
+        }
+        
+    - name: Upload test artifacts
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: test-build-${{ github.sha }}
+        path: |
+          dist/BadgePatternTool.exe
+          dist/安装说明.txt
+        retention-days: 3

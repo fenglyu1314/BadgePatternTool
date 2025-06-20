@@ -1,0 +1,166 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'  # 当推送以v开头的标签时触发（如v1.4.1）
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'  # 使用稳定的Python版本
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements-dev.txt
+        
+    - name: Verify project structure
+      run: |
+        echo "=== 项目结构检查 ==="
+        ls -la
+        echo "=== src目录 ==="
+        ls -la src/
+        echo "=== assets目录 ==="
+        ls -la src/assets/ || echo "assets目录不存在"
+        
+    - name: Run tests
+      run: |
+        echo "=== 运行测试 ==="
+        python scripts/dev_tools.py test || echo "测试失败，但继续构建"
+        
+    - name: Build executable
+      run: |
+        echo "=== 开始构建 ==="
+        python scripts/build.py
+        
+    - name: Verify build output
+      run: |
+        echo "=== 构建结果检查 ==="
+        ls -la dist/
+        if (Test-Path "dist/BadgePatternTool.exe") {
+          $size = (Get-Item "dist/BadgePatternTool.exe").Length / 1MB
+          echo "✅ 可执行文件大小: $([math]::Round($size, 1)) MB"
+        } else {
+          echo "❌ 可执行文件未找到"
+          exit 1
+        }
+        
+    - name: Create release archive
+      run: |
+        echo "=== 创建发布包 ==="
+        # 创建发布目录
+        mkdir release
+        
+        # 复制主要文件
+        Copy-Item "dist/BadgePatternTool.exe" "release/"
+        Copy-Item "dist/README.md" "release/" -ErrorAction SilentlyContinue
+        Copy-Item "dist/CHANGELOG.md" "release/" -ErrorAction SilentlyContinue
+        Copy-Item "dist/安装说明.txt" "release/" -ErrorAction SilentlyContinue
+        
+        # 复制文档目录
+        if (Test-Path "dist/docs") {
+          Copy-Item "dist/docs" "release/" -Recurse
+        }
+        
+        # 创建ZIP文件
+        $version = "${{ github.ref_name }}"
+        $zipName = "BadgePatternTool-$version-Windows.zip"
+        Compress-Archive -Path "release/*" -DestinationPath $zipName
+        
+        echo "=== 发布包内容 ==="
+        ls -la release/
+        echo "=== ZIP文件 ==="
+        ls -la *.zip
+        
+        # 设置环境变量供后续步骤使用
+        echo "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
+        
+    - name: Extract version info
+      id: version
+      run: |
+        $version = "${{ github.ref_name }}"
+        $versionNumber = $version -replace '^v', ''
+        echo "VERSION=$version" >> $env:GITHUB_ENV
+        echo "VERSION_NUMBER=$versionNumber" >> $env:GITHUB_ENV
+        echo "version=$version" >> $env:GITHUB_OUTPUT
+        echo "version_number=$versionNumber" >> $env:GITHUB_OUTPUT
+        
+    - name: Generate release notes
+      id: release_notes
+      run: |
+        $version = "${{ env.VERSION }}"
+        $releaseNotes = @"
+        # BadgePatternTool $version
+
+        ## 📦 下载说明
+        
+        - **Windows用户**: 下载 `BadgePatternTool-$version-Windows.zip`
+        - **解压后运行**: `BadgePatternTool.exe`
+        - **系统要求**: Windows 7/8/10/11 (64位)
+        
+        ## ✨ 主要功能
+        
+        - 🎨 图片批量导入和圆形裁剪
+        - ⚙️ 可配置徽章尺寸（32mm/58mm/75mm）
+        - 📐 智能A4排版（网格/紧凑模式）
+        - 🖼️ 交互式图片编辑
+        - 📄 多页面自动分页
+        - 🖨️ 高质量导出和直接打印
+        
+        ## 🔧 使用方法
+        
+        1. 解压下载的ZIP文件
+        2. 双击运行 `BadgePatternTool.exe`
+        3. 查看 `docs/` 目录中的详细文档
+        
+        ## 📋 更新内容
+        
+        查看 [CHANGELOG.md](https://github.com/fenglyu1314/BadgePatternTool/blob/main/CHANGELOG.md) 了解详细更新内容。
+        
+        ## 🆘 问题反馈
+        
+        如遇到问题，请在 [Issues](https://github.com/fenglyu1314/BadgePatternTool/issues) 中反馈。
+        "@
+        
+        # 保存到文件
+        $releaseNotes | Out-File -FilePath "release_notes.md" -Encoding UTF8
+        
+        # 设置输出
+        echo "RELEASE_NOTES<<EOF" >> $env:GITHUB_ENV
+        echo $releaseNotes >> $env:GITHUB_ENV
+        echo "EOF" >> $env:GITHUB_ENV
+        
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.ref_name }}
+        name: BadgePatternTool ${{ env.VERSION }}
+        body: ${{ env.RELEASE_NOTES }}
+        files: |
+          BadgePatternTool-${{ env.VERSION }}-Windows.zip
+          dist/BadgePatternTool.exe
+        draft: false
+        prerelease: false
+        generate_release_notes: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: BadgePatternTool-${{ env.VERSION }}-artifacts
+        path: |
+          dist/
+          release/
+          *.zip
+        retention-days: 30

@@ -1,0 +1,101 @@
+name: Manual Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '版本号 (例如: 1.4.2)'
+        required: true
+        default: '1.4.2'
+      create_release:
+        description: '是否创建GitHub Release'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+        - 'true'
+        - 'false'
+
+jobs:
+  manual-build:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements-dev.txt
+        
+    - name: Update version (if needed)
+      run: |
+        $version = "${{ github.event.inputs.version }}"
+        echo "=== 更新版本号到 $version ==="
+        python scripts/version_manager.py $version --force
+        
+    - name: Build executable
+      run: |
+        echo "=== 构建可执行文件 ==="
+        python scripts/build.py
+        
+    - name: Create release package
+      run: |
+        $version = "${{ github.event.inputs.version }}"
+        $zipName = "BadgePatternTool-v$version-Windows-Manual.zip"
+        
+        mkdir manual-release
+        Copy-Item "dist/BadgePatternTool.exe" "manual-release/"
+        Copy-Item "dist/README.md" "manual-release/" -ErrorAction SilentlyContinue
+        Copy-Item "dist/CHANGELOG.md" "manual-release/" -ErrorAction SilentlyContinue
+        Copy-Item "dist/安装说明.txt" "manual-release/" -ErrorAction SilentlyContinue
+        
+        if (Test-Path "dist/docs") {
+          Copy-Item "dist/docs" "manual-release/" -Recurse
+        }
+        
+        Compress-Archive -Path "manual-release/*" -DestinationPath $zipName
+        echo "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
+        
+    - name: Create Release (if requested)
+      if: github.event.inputs.create_release == 'true'
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: v${{ github.event.inputs.version }}
+        name: BadgePatternTool v${{ github.event.inputs.version }} (Manual Build)
+        body: |
+          # BadgePatternTool v${{ github.event.inputs.version }} (手动构建)
+          
+          这是一个手动触发的构建版本。
+          
+          ## 📦 下载
+          - Windows: `BadgePatternTool-v${{ github.event.inputs.version }}-Windows-Manual.zip`
+          
+          ## 🔧 使用方法
+          1. 解压ZIP文件
+          2. 运行 `BadgePatternTool.exe`
+          
+          构建时间: ${{ github.run_id }}
+        files: |
+          ${{ env.ZIP_NAME }}
+          dist/BadgePatternTool.exe
+        draft: false
+        prerelease: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: Manual-Build-v${{ github.event.inputs.version }}
+        path: |
+          dist/
+          manual-release/
+          *.zip
+        retention-days: 7
