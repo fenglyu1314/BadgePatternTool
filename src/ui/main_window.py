@@ -1869,7 +1869,6 @@ class MainWindow(QMainWindow):
     def _generate_print_page_like_export(self, page_images, page_info):
         """使用与导出功能完全相同的逻辑生成页面图片"""
         try:
-            from PIL import Image
             from core.image_processor import ImageProcessor
 
             # 创建图片处理器
