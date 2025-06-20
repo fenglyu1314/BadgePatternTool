@@ -130,22 +130,22 @@ jobs:
 
         # Create simple release notes
         $releaseNotes = @"
-        # BadgePatternTool $version
+        # 徽章图案工具 BadgePatternTool $version
 
-        ## Download Options
+        ## 下载选项
 
-        - **Standalone**: ``BadgePatternTool-$version.exe`` (Run directly)
-        - **Full Package**: ``BadgePatternTool-$version-Windows.zip`` (Includes CHANGELOG)
+        - **独立版本**: ``BadgePatternTool-$version.exe`` (直接运行)
+        - **完整包**: ``BadgePatternTool-$version-Windows.zip`` (包含更新日志)
 
-        **System Requirements**: Windows 7/8/10/11 (64-bit)
+        **系统要求**: Windows 7/8/10/11 (64位)
 
-        ## Changelog
+        ## 更新日志
 
-        See CHANGELOG.md in the download package for detailed update information.
+        详细的更新信息请查看下载包中的 CHANGELOG.md 文件。
 
-        ## Issue Reporting
+        ## 问题反馈
 
-        If you encounter any issues, please report them in [Issues](https://github.com/fenglyu1314/BadgePatternTool/issues).
+        如果您遇到任何问题，请在 [Issues](https://github.com/fenglyu1314/BadgePatternTool/issues) 中反馈。
         "@
 
         # Set output for GitHub Release
