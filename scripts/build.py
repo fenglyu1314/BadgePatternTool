@@ -115,17 +115,17 @@ def copy_resources():
         print("dist directory does not exist")
         return False
 
-    # 创建用户版README
-    create_user_readme(dist_dir)
+    # 创建用户使用说明
+    create_user_guide(dist_dir)
 
     # 不复制开发文档目录，用户不需要
     print("  Skipped: Development documentation (not needed for end users)")
 
     return True
 
-def create_user_readme(dist_dir):
-    """创建面向用户的README文件"""
-    print("Creating user-friendly README...")
+def create_user_guide(dist_dir):
+    """创建中文用户使用指南"""
+    print("Creating Chinese user guide...")
 
     # 获取exe文件大小
     exe_path = dist_dir / "BadgePatternTool.exe"
@@ -133,60 +133,91 @@ def create_user_readme(dist_dir):
     if exe_path.exists():
         file_size_mb = exe_path.stat().st_size / (1024 * 1024)
 
-    user_readme = f"""# BadgePatternTool - Badge Pattern Tool
+    user_guide = f"""# BadgePatternTool 徽章图案工具
 
-A professional badge making tool for image processing and layout design.
+专业的徽章制作工具，用于图片处理和版面设计。
 
-## Quick Start
+## 🚀 快速开始
 
-1. **Run the Program**
-   - Double-click `BadgePatternTool.exe` to start
-   - First run may take a few seconds to load
+### 1. 运行程序
+- 双击 `BadgePatternTool.exe` 启动程序
+- 首次运行可能需要几秒钟加载时间
 
-2. **Basic Usage**
-   - Import image files (JPG, PNG, BMP, GIF)
-   - Adjust image position and size in the editor
-   - Configure badge size (32mm/58mm/75mm presets available)
-   - Select layout mode (Grid or Compact)
-   - Export to PDF/PNG/JPG or print directly
+### 2. 导入图片
+- 点击"导入图片"按钮添加您的照片
+- 支持 JPG、PNG、BMP、GIF 格式
+- 可以一次导入多张图片
 
-## System Requirements
+### 3. 编辑图片
+- 点击任意图片进入编辑模式
+- 拖拽移动图片位置，滚轮缩放大小
+- 在圆形框架内调整图片位置
 
-- Windows 7/8/10/11 (64-bit)
-- At least 100MB free disk space
-- Recommended 4GB RAM
+### 4. 版面设置
+- 选择徽章尺寸：32mm、58mm 或 75mm
+- 选择排版模式：网格模式或紧凑模式
+- 调整徽章间距
 
-## Main Features
+### 5. 导出或打印
+- 点击"导出图片"保存为图片文件
+- 点击"打印"直接打印
+- 支持 PDF、PNG、JPG 格式
 
-- 🎨 Batch image import and circular cropping
-- ⚙️ Configurable badge sizes (32mm/58mm/75mm)
-- 📐 Smart A4 layout (Grid/Compact modes)
-- 🖼️ Interactive image editing
-- 📄 Multi-page automatic pagination
-- 🖨️ High-quality export and direct printing
+## 💻 系统要求
 
-## File Information
+- Windows 7/8/10/11 (64位)
+- 至少 100MB 可用磁盘空间
+- 推荐 4GB 内存
 
-- `BadgePatternTool.exe` - Main program ({file_size_mb:.1f}MB)
-- `User_Guide.txt` - Detailed user guide
-- `README.md` - This file
+## ✨ 主要功能
 
-## Support
+- 🎨 批量图片导入和圆形裁剪
+- ⚙️ 可配置徽章尺寸（32mm/58mm/75mm）
+- 📐 智能A4排版（网格/紧凑模式）
+- 🖼️ 交互式图片编辑
+- 📄 多页面自动分页
+- 🖨️ 高质量导出和直接打印
 
-For issues or questions, please contact:
-- **Developer**: 喵喵mya (231750570@qq.com)
-- **GitHub Issues**: https://github.com/fenglyu1314/BadgePatternTool/issues
+## 📁 文件说明
+
+- `BadgePatternTool.exe` - 主程序文件 ({file_size_mb:.1f}MB)
+- `使用说明.md` - 本文件
+
+## 🆘 技术支持
+
+如遇问题或有建议，请联系：
+- **开发者**: 喵喵mya (231750570@qq.com)
+- **问题反馈**: https://github.com/fenglyu1314/BadgePatternTool/issues
+
+## 📝 使用技巧
+
+### 图片编辑技巧
+- 使用鼠标滚轮可以精确调整图片缩放
+- 拖拽时保持平滑移动以获得最佳效果
+- 注意安全圈（内圈）确保重要内容不被裁切
+
+### 排版建议
+- 32mm徽章适合头像或小图标
+- 58mm徽章适合一般照片
+- 75mm徽章适合需要更多细节的图片
+- 紧凑模式可以在一页放置更多徽章
+
+### 打印建议
+- 使用高质量纸张获得最佳效果
+- 打印前预览确保布局正确
+- 建议使用彩色激光打印机
 
 ---
 BadgePatternTool v1.5.6
-**Developer**: 喵喵mya
+**开发者**: 喵喵mya
+**版权所有** © 2024
 """
 
-    readme_path = dist_dir / "README.md"
-    with open(readme_path, 'w', encoding='utf-8') as f:
-        f.write(user_readme)
+    guide_path = dist_dir / "使用说明.md"
+    with open(guide_path, 'w', encoding='utf-8') as f:
+        f.write(user_guide)
 
-    print("  Created: User-friendly README.md")
+    print("  Created: 使用说明.md (Chinese user guide)")
 
 def optimize_executable():
     """优化可执行文件"""
@@ -216,57 +247,7 @@ def optimize_executable():
         print(f"Optimization failed: {e}")
         return False
 
-def create_installer_info():
-    """创建简化的使用说明"""
-    print("Creating user guide...")
 
-    project_root = Path(__file__).parent.parent
-    dist_dir = project_root / "dist"
-    exe_path = dist_dir / "BadgePatternTool.exe"
-
-    # 获取文件大小
-    file_size_mb = 0
-    if exe_path.exists():
-        file_size_mb = exe_path.stat().st_size / (1024 * 1024)
-
-    install_info = f"""# BadgePatternTool User Guide
-
-## Quick Start
-
-1. **Run the Program**
-   - Double-click `BadgePatternTool.exe` to start
-   - First run may take a few seconds to load
-
-2. **System Requirements**
-   - Windows 7/8/10/11 (64-bit)
-   - At least 100MB free disk space
-   - Recommended 4GB RAM
-
-3. **Basic Usage**
-   - Import image files
-   - Adjust image position and size
-   - Select layout mode
-   - Export or print results
-
-## File Description
-
-- `BadgePatternTool.exe` - Main program file ({file_size_mb:.1f}MB)
-- `README.md` - Project documentation
-- `User_Guide.txt` - This file
-
-## Feedback
-
-If you encounter any issues, please refer to README.md or contact the developer.
-
----
-BadgePatternTool v1.5.6
-"""
-
-    info_file = dist_dir / "User_Guide.txt"
-    with open(info_file, 'w', encoding='utf-8') as f:
-        f.write(install_info)
-
-    print("  Created: User_Guide.txt")
 
 def main():
     """主构建函数"""
@@ -292,8 +273,7 @@ def main():
     if not copy_resources():
         return False
 
-    # 创建安装说明
-    create_installer_info()
+    # 创建用户指南 (已在 copy_resources 中调用)
 
     print("\n" + "=" * 40)
     print("Build completed successfully!")

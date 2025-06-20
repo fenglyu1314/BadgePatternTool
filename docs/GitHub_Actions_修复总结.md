@@ -8,8 +8,8 @@
 **解决方案**: 升级到 actions/upload-artifact@v4
 **影响文件**:
 - `.github/workflows/release.yml`
-- `.github/workflows/manual-build.yml`
-- `.github/workflows/test-build.yml`
+- `.github/workflows/manual-release.yml` (原 manual-build.yml)
+- `.github/workflows/build.yml` (原 test-build.yml)
 
 ### 问题2: Windows PowerShell 命令兼容性
 **版本**: v1.5.3
@@ -102,7 +102,7 @@
 **解决方案**:
 - 创建CI友好的测试运行器 `scripts/ci_tests.py`
 - 只进行语法检查和模块导入测试，跳过GUI测试
-- 修复工作流触发条件：test-build只在develop分支触发
+- 修复工作流触发条件：build工作流只在develop分支触发
 - 避免与release工作流冲突
 
 **当前状态**:

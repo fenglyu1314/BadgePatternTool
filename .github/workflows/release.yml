@@ -3,14 +3,14 @@ name: Build and Release
 on:
   push:
     tags:
-      - 'v*'  # 当推送以v开头的标签时触发（如v1.4.1）
-  workflow_dispatch:  # 允许手动触发
+      - 'v*'  # Trigger when pushing tags starting with v (e.g. v1.4.1)
+  workflow_dispatch:  # Allow manual trigger
 
-# 添加必要的权限
+# Add necessary permissions
 permissions:
-  contents: write  # 允许创建release和上传文件
-  actions: read    # 允许读取actions
-  checks: write    # 允许写入检查结果
+  contents: write  # Allow creating releases and uploading files
+  actions: read    # Allow reading actions
+  checks: write    # Allow writing check results
 
 jobs:
   build-and-release:
@@ -23,7 +23,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.11'  # 使用稳定的Python版本
+        python-version: '3.11'  # Use stable Python version
         
     - name: Install dependencies
       run: |
@@ -33,32 +33,32 @@ jobs:
         
     - name: Verify project structure
       run: |
-        echo "=== 项目结构检查 ==="
+        echo "=== Project Structure Check ==="
         Get-ChildItem -Force
-        echo "=== src目录 ==="
+        echo "=== src directory ==="
         Get-ChildItem src/ -Force
-        echo "=== assets目录 ==="
-        if (Test-Path "src/assets") { Get-ChildItem src/assets/ -Force } else { echo "assets目录不存在" }
-        
+        echo "=== assets directory ==="
+        if (Test-Path "src/assets") { Get-ChildItem src/assets/ -Force } else { echo "assets directory not found" }
+
     - name: Run CI tests
       run: |
-        echo "=== 运行CI安全测试 ==="
+        echo "=== Running CI Safety Tests ==="
         python scripts/ci_tests.py
-        
+
     - name: Build executable
       run: |
-        echo "=== 开始构建 ==="
+        echo "=== Starting Build ==="
         python scripts/build.py
         
     - name: Verify build output
       run: |
-        echo "=== 构建结果检查 ==="
+        echo "=== Build Results Check ==="
         Get-ChildItem dist/ -Force
         if (Test-Path "dist/BadgePatternTool.exe") {
           $size = (Get-Item "dist/BadgePatternTool.exe").Length / 1MB
-          echo "✅ 可执行文件大小: $([math]::Round($size, 1)) MB"
+          echo "Executable file size: $([math]::Round($size, 1)) MB"
         } else {
-          echo "❌ 可执行文件未找到"
+          echo "Executable file not found"
           exit 1
         }
         
@@ -74,100 +74,68 @@ jobs:
 
     - name: Create release files
       run: |
-        echo "=== 准备发布文件 ==="
-        # 创建发布目录
+        echo "=== Preparing Release Files ==="
+        # Create release directory
         mkdir release
 
-        # 复制主要文件到发布目录
+        # Copy main files to release directory
         Copy-Item "dist/BadgePatternTool.exe" "release/"
-        Copy-Item "dist/README.md" "release/" -ErrorAction SilentlyContinue
-        Copy-Item "dist/User_Guide.txt" "release/" -ErrorAction SilentlyContinue
+        Copy-Item "dist/使用说明.md" "release/" -ErrorAction SilentlyContinue
 
-        # 使用环境变量中的版本号
+        # Use version from environment variable
         $version = "${{ env.VERSION }}"
         $zipName = "BadgePatternTool-$version-Windows.zip"
         $exeName = "BadgePatternTool-$version.exe"
 
-        # 创建ZIP文件（包含所有文件）
+        # Create ZIP file (containing all files)
         Compress-Archive -Path "release/*" -DestinationPath $zipName
 
-        # 复制单独的exe文件（重命名以区分）
+        # Copy standalone exe file (renamed for distinction)
         Copy-Item "dist/BadgePatternTool.exe" $exeName
 
-        echo "=== 发布文件列表 ==="
-        echo "ZIP包内容:"
+        echo "=== Release Files List ==="
+        echo "ZIP contents:"
         Get-ChildItem release/ -Force
-        echo "发布文件:"
+        echo "Release files:"
         Get-ChildItem *.zip, *.exe -Force
 
-        # 验证文件是否存在
+        # Verify files exist
         if (Test-Path $zipName) {
-          echo "✅ ZIP文件创建成功: $zipName"
+          echo "ZIP file created successfully: $zipName"
         } else {
-          echo "❌ ZIP文件创建失败"
+          echo "ZIP file creation failed"
           exit 1
         }
 
         if (Test-Path $exeName) {
-          echo "✅ EXE文件创建成功: $exeName"
+          echo "EXE file created successfully: $exeName"
         } else {
-          echo "❌ EXE文件创建失败"
+          echo "EXE file creation failed"
           exit 1
         }
 
-        # 设置环境变量供后续步骤使用
+        # Set environment variables for subsequent steps
         echo "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
         echo "EXE_NAME=$exeName" >> $env:GITHUB_ENV
         
     - name: Generate release notes
       id: release_notes
       run: |
+        echo "=== Generating Release Notes ==="
         $version = "${{ env.VERSION }}"
-        $releaseNotes = @"
-        # BadgePatternTool $version
 
-        ## 📦 下载选项
+        # Generate release notes using script (skip changelog to avoid encoding issues)
+        python scripts/generate_release_notes.py $version release_notes.md --skip-changelog
 
-        **推荐下载方式**:
-        - 🎯 **单文件版**: `BadgePatternTool-$version.exe` (直接运行，无需解压)
-        - 📦 **完整包**: `BadgePatternTool-$version-Windows.zip` (包含说明文档)
+        # Read generated content
+        $releaseNotes = Get-Content "release_notes.md" -Raw -Encoding UTF8
 
-        **系统要求**: Windows 7/8/10/11 (64位)
-
-        ## ✨ 主要功能
-
-        - 🎨 图片批量导入和圆形裁剪
-        - ⚙️ 可配置徽章尺寸（32mm/58mm/75mm）
-        - 📐 智能A4排版（网格/紧凑模式）
-        - 🖼️ 交互式图片编辑
-        - 📄 多页面自动分页
-        - 🖨️ 高质量导出和直接打印
-
-        ## 🚀 快速开始
-
-        **单文件版**: 直接双击 `BadgePatternTool-$version.exe` 运行
-
-        **完整包**:
-        1. 解压 `BadgePatternTool-$version-Windows.zip`
-        2. 双击运行 `BadgePatternTool.exe`
-        3. 查看 `README.md` 和 `User_Guide.txt` 了解详细使用方法
-
-        ## 📋 更新内容
-
-        查看 [CHANGELOG.md](https://github.com/fenglyu1314/BadgePatternTool/blob/main/CHANGELOG.md) 了解详细更新内容。
-
-        ## 🆘 问题反馈
-
-        如遇到问题，请在 [Issues](https://github.com/fenglyu1314/BadgePatternTool/issues) 中反馈。
-        "@
-        
-        # 保存到文件
-        $releaseNotes | Out-File -FilePath "release_notes.md" -Encoding UTF8
-        
-        # 设置输出
+        # Set output for GitHub Release
         echo "RELEASE_NOTES<<EOF" >> $env:GITHUB_ENV
         echo $releaseNotes >> $env:GITHUB_ENV
         echo "EOF" >> $env:GITHUB_ENV
+
+        echo "Release notes generated successfully"
         
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v1

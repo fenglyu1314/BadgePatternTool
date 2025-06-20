@@ -1,4 +1,4 @@
-name: Test Build
+name: Build and Test
 
 on:
   push:
@@ -7,7 +7,7 @@ on:
     branches: [ main ]
 
 jobs:
-  test-build:
+  build:
     runs-on: windows-latest
     
     steps:
@@ -27,45 +27,45 @@ jobs:
         
     - name: Verify project structure
       run: |
-        echo "=== 项目结构检查 ==="
+        echo "=== Project Structure Check ==="
         Get-ChildItem -Force
-        echo "=== src目录 ==="
+        echo "=== src directory ==="
         Get-ChildItem src/ -Force
-        echo "=== assets目录 ==="
-        if (Test-Path "src/assets") { Get-ChildItem src/assets/ -Force } else { echo "assets目录不存在" }
+        echo "=== assets directory ==="
+        if (Test-Path "src/assets") { Get-ChildItem src/assets/ -Force } else { echo "assets directory not found" }
 
     - name: Run code quality checks
       run: |
-        echo "=== 代码质量检查 ==="
+        echo "=== Code Quality Check ==="
         python scripts/dev_tools.py quality
-        echo "质量检查完成"
+        echo "Quality check completed"
 
     - name: Run CI tests
       run: |
-        echo "=== 运行CI安全测试 ==="
+        echo "=== Running CI Safety Tests ==="
         python scripts/ci_tests.py
-        
-    - name: Test build process
+
+    - name: Build application
       run: |
-        echo "=== 测试构建过程 ==="
+        echo "=== Building Application ==="
         python scripts/build.py
         
     - name: Verify build output
       run: |
-        echo "=== 验证构建结果 ==="
+        echo "=== Verify Build Results ==="
         if (Test-Path "dist/BadgePatternTool.exe") {
           $size = (Get-Item "dist/BadgePatternTool.exe").Length / 1MB
-          echo "✅ 构建成功，文件大小: $([math]::Round($size, 1)) MB"
+          echo "Build successful, file size: $([math]::Round($size, 1)) MB"
         } else {
-          echo "❌ 构建失败，未找到可执行文件"
+          echo "Build failed, executable not found"
           exit 1
         }
         
-    - name: Upload test artifacts
+    - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: test-build-${{ github.sha }}
+        name: build-${{ github.sha }}
         path: |
           dist/
-        retention-days: 3
+        retention-days: 7
