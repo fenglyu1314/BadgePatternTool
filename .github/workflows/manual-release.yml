@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version number (e.g. 1.4.2)'
+        description: '版本号 (例如: 1.4.2)'
         required: true
         default: '1.4.2'
       create_release:
-        description: 'Create GitHub Release'
+        description: '是否创建GitHub Release'
         required: true
         default: 'true'
         type: choice
@@ -19,7 +19,11 @@ on:
 jobs:
   manual-release:
     runs-on: windows-latest
-    
+
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: 1
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -35,15 +39,15 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller>=5.0.0
         
-    - name: Update version (if needed)
+    - name: 更新版本号（如果需要）
       run: |
         $version = "${{ github.event.inputs.version }}"
-        echo "=== Updating version to $version ==="
+        echo "=== 更新版本号到 $version ==="
         python scripts/version_manager.py $version --force
 
-    - name: Build executable
+    - name: 构建可执行文件
       run: |
-        echo "=== Building executable ==="
+        echo "=== 构建可执行文件 ==="
         python scripts/build.py
         
     - name: Create release package
@@ -53,7 +57,6 @@ jobs:
         
         mkdir manual-release
         Copy-Item "dist/BadgePatternTool.exe" "manual-release/"
-        Copy-Item "dist/使用说明.md" "manual-release/" -ErrorAction SilentlyContinue
         Copy-Item "dist/CHANGELOG.md" "manual-release/" -ErrorAction SilentlyContinue
         
         if (Test-Path "dist/docs") {
@@ -63,14 +66,31 @@ jobs:
         Compress-Archive -Path "manual-release/*" -DestinationPath $zipName
         echo "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
 
-    - name: Generate release notes
+    - name: 创建简单发布说明
       if: github.event.inputs.create_release == 'true'
       run: |
-        echo "=== Generating Release Notes ==="
+        echo "=== 创建简单发布说明 ==="
         $version = "v${{ github.event.inputs.version }}"
         $buildTime = "${{ github.run_id }}"
-        python scripts/generate_release_notes.py $version release_notes.md --manual --build-time=$buildTime --skip-changelog
-        echo "Release notes generated for manual release"
+
+        $releaseNotes = @"
+        # BadgePatternTool $version (手动发布)
+
+        这是一个手动触发的发布版本。
+
+        ## 下载
+        - 手动构建: ``BadgePatternTool-$version-Windows-Manual.zip``
+
+        ## 安装说明
+        1. 解压ZIP文件
+        2. 运行 ``BadgePatternTool.exe``
+        3. 查看 ``CHANGELOG.md`` 了解更新信息
+
+        构建ID: $buildTime
+        "@
+
+        $releaseNotes | Out-File -FilePath "release_notes.md" -Encoding UTF8
+        echo "简单发布说明已创建"
 
     - name: Create Release (if requested)
       if: github.event.inputs.create_release == 'true'

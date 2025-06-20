@@ -9,7 +9,11 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-    
+
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: 1
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -25,43 +29,43 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller>=5.0.0
         
-    - name: Verify project structure
+    - name: 验证项目结构
       run: |
-        echo "=== Project Structure Check ==="
+        echo "=== 项目结构检查 ==="
         Get-ChildItem -Force
-        echo "=== src directory ==="
+        echo "=== src目录 ==="
         Get-ChildItem src/ -Force
-        echo "=== assets directory ==="
-        if (Test-Path "src/assets") { Get-ChildItem src/assets/ -Force } else { echo "assets directory not found" }
+        echo "=== assets目录 ==="
+        if (Test-Path "src/assets") { Get-ChildItem src/assets/ -Force } else { echo "assets目录不存在" }
 
-    - name: Run code quality checks
+    - name: 运行代码质量检查
       run: |
-        echo "=== Code Quality Check ==="
+        echo "=== 代码质量检查 ==="
         python scripts/dev_tools.py quality
-        echo "Quality check completed"
+        echo "质量检查完成"
 
-    - name: Run CI tests
+    - name: 运行CI测试
       run: |
-        echo "=== Running CI Safety Tests ==="
+        echo "=== 运行CI安全测试 ==="
         python scripts/ci_tests.py
 
-    - name: Build application
+    - name: 构建应用程序
       run: |
-        echo "=== Building Application ==="
+        echo "=== 构建应用程序 ==="
         python scripts/build.py
         
-    - name: Verify build output
+    - name: 验证构建结果
       run: |
-        echo "=== Verify Build Results ==="
+        echo "=== 验证构建结果 ==="
         if (Test-Path "dist/BadgePatternTool.exe") {
           $size = (Get-Item "dist/BadgePatternTool.exe").Length / 1MB
-          echo "Build successful, file size: $([math]::Round($size, 1)) MB"
+          echo "✅ 构建成功，文件大小: $([math]::Round($size, 1)) MB"
         } else {
-          echo "Build failed, executable not found"
+          echo "❌ 构建失败，未找到可执行文件"
           exit 1
         }
         
-    - name: Upload build artifacts
+    - name: 上传构建产物
       uses: actions/upload-artifact@v4
       if: always()
       with:

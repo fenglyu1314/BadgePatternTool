@@ -67,7 +67,7 @@ echo 文件大小: 约53MB
 echo.
 echo 分发文件包括:
 echo   - BadgePatternTool.exe (主程序)
-echo   - 使用说明.md (中文用户指南)
+echo   - CHANGELOG.md (更新日志)
 echo.
 
 pause
