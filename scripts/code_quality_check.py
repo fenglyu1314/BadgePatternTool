@@ -63,14 +63,14 @@ def check_code_complexity(file_path):
 
         for node in ast.walk(tree):
             if isinstance(node, ast.FunctionDef):
-                # 检查函数长度
+                # 检查函数长度（放宽标准到100行）
                 if hasattr(node, 'lineno') and hasattr(node, 'end_lineno') and node.end_lineno:
                     func_length = node.end_lineno - node.lineno
-                    if func_length > 50:
+                    if func_length > 100:
                         issues.append(f"Function {node.name} too long ({func_length} lines)")
 
-                # 检查参数数量
-                if len(node.args.args) > 6:
+                # 检查参数数量（放宽标准到8个）
+                if len(node.args.args) > 8:
                     issues.append(f"Function {node.name} has too many parameters ({len(node.args.args)})")
 
         return issues

@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QWidget, QMessageBox
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap, QPainter, QFont
+from PySide6.QtGui import QPixmap, QPainter, QFont, QPen, QColor
 from PySide6.QtPrintSupport import QPrinter, QPrinterInfo
 
 # 导入主界面的颜色配置
@@ -447,14 +447,14 @@ class CustomPrintDialog(QDialog):
             return result_pixmap
 
         except Exception as e:
-            from common.error_handler import logger
+
             logger.error(f"应用设置到预览失败: {e}", exc_info=True)
             return original_pixmap
 
     def draw_margin_lines(self, painter, pixmap_size, margins):
         """绘制页边距线"""
         try:
-            from PySide6.QtGui import QPen, QColor
+
 
             # 设置页边距线样式
             painter.setPen(QPen(QColor(200, 100, 100), 2, Qt.PenStyle.DashLine))
@@ -588,7 +588,7 @@ class CustomPrintDialog(QDialog):
             # 获取当前选中的打印机
             current_index = self.printer_combo.currentIndex()
             if current_index < 0 or current_index >= len(self.printer_list):
-                from PySide6.QtWidgets import QMessageBox
+
                 QMessageBox.warning(self, "错误", "请先选择一个打印机")
                 return
 
