@@ -16,6 +16,8 @@ jobs:
     env:
       PYTHONIOENCODING: utf-8
       PYTHONUTF8: 1
+      QT_QPA_PLATFORM: offscreen
+      DISPLAY: ":99"
 
     steps:
     - name: Checkout code
@@ -25,7 +27,26 @@ jobs:
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-        
+
+    - name: Install system dependencies for PySide6
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          libgl1-mesa-glx \
+          libegl1-mesa \
+          libxrandr2 \
+          libxss1 \
+          libxcursor1 \
+          libxcomposite1 \
+          libasound2 \
+          libxi6 \
+          libxtst6 \
+          xvfb
+
+    - name: Setup virtual display
+      run: |
+        sudo Xvfb :99 -screen 0 1024x768x24 > /dev/null 2>&1 &
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
