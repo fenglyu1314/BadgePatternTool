@@ -34,11 +34,10 @@ jobs:
         echo "=== assets目录 ==="
         if (Test-Path "src/assets") { Get-ChildItem src/assets/ -Force } else { echo "assets目录不存在" }
         
-    - name: Run tests
+    - name: Run CI tests
       run: |
-        echo "=== 运行测试 ==="
-        echo "跳过GUI相关测试（CI环境无GUI支持）"
-        echo "测试完成"
+        echo "=== 运行CI安全测试 ==="
+        python scripts/ci_tests.py
         
     - name: Build executable
       run: |
