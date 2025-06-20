@@ -73,7 +73,7 @@ def build_executable():
         ]
 
         print(f"Executing command: {' '.join(cmd)}")
-        result = subprocess.run(cmd, cwd=project_root, capture_output=True, text=True)
+        result = subprocess.run(cmd, cwd=project_root, capture_output=True, text=True, encoding='utf-8', errors='ignore')
 
         if result.returncode == 0:
             print("Build successful")
