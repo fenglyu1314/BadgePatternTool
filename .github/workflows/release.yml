@@ -88,6 +88,21 @@ jobs:
         echo "发布文件:"
         Get-ChildItem *.zip, *.exe -Force
 
+        # 验证文件是否存在
+        if (Test-Path $zipName) {
+          echo "✅ ZIP文件创建成功: $zipName"
+        } else {
+          echo "❌ ZIP文件创建失败"
+          exit 1
+        }
+
+        if (Test-Path $exeName) {
+          echo "✅ EXE文件创建成功: $exeName"
+        } else {
+          echo "❌ EXE文件创建失败"
+          exit 1
+        }
+
         # 设置环境变量供后续步骤使用
         echo "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
         echo "EXE_NAME=$exeName" >> $env:GITHUB_ENV
@@ -159,8 +174,8 @@ jobs:
         name: BadgePatternTool ${{ env.VERSION }}
         body: ${{ env.RELEASE_NOTES }}
         files: |
-          BadgePatternTool-${{ env.VERSION }}-Windows.zip
-          BadgePatternTool-${{ env.VERSION }}.exe
+          ${{ env.ZIP_NAME }}
+          ${{ env.EXE_NAME }}
         draft: false
         prerelease: false
         generate_release_notes: false
@@ -175,4 +190,5 @@ jobs:
           dist/
           release/
           *.zip
+          *.exe
         retention-days: 30
