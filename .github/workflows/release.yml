@@ -62,35 +62,35 @@ jobs:
           exit 1
         }
         
-    - name: Create release archive
+    - name: Create release files
       run: |
-        echo "=== 创建发布包 ==="
+        echo "=== 准备发布文件 ==="
         # 创建发布目录
         mkdir release
-        
-        # 复制主要文件
+
+        # 复制主要文件到发布目录
         Copy-Item "dist/BadgePatternTool.exe" "release/"
         Copy-Item "dist/README.md" "release/" -ErrorAction SilentlyContinue
-        Copy-Item "dist/CHANGELOG.md" "release/" -ErrorAction SilentlyContinue
         Copy-Item "dist/User_Guide.txt" "release/" -ErrorAction SilentlyContinue
-        
-        # 复制文档目录
-        if (Test-Path "dist/docs") {
-          Copy-Item "dist/docs" "release/" -Recurse
-        }
-        
-        # 创建ZIP文件
+
+        # 创建ZIP文件（包含所有文件）
         $version = "${{ github.ref_name }}"
         $zipName = "BadgePatternTool-$version-Windows.zip"
         Compress-Archive -Path "release/*" -DestinationPath $zipName
-        
-        echo "=== 发布包内容 ==="
+
+        # 复制单独的exe文件（重命名以区分）
+        $exeName = "BadgePatternTool-$version.exe"
+        Copy-Item "dist/BadgePatternTool.exe" $exeName
+
+        echo "=== 发布文件列表 ==="
+        echo "ZIP包内容:"
         Get-ChildItem release/ -Force
-        echo "=== ZIP文件 ==="
-        Get-ChildItem *.zip -Force
-        
+        echo "发布文件:"
+        Get-ChildItem *.zip, *.exe -Force
+
         # 设置环境变量供后续步骤使用
         echo "ZIP_NAME=$zipName" >> $env:GITHUB_ENV
+        echo "EXE_NAME=$exeName" >> $env:GITHUB_ENV
         
     - name: Extract version info
       id: version
@@ -109,33 +109,38 @@ jobs:
         $releaseNotes = @"
         # BadgePatternTool $version
 
-        ## 📦 下载说明
-        
-        - **Windows用户**: 下载 `BadgePatternTool-$version-Windows.zip`
-        - **解压后运行**: `BadgePatternTool.exe`
-        - **系统要求**: Windows 7/8/10/11 (64位)
-        
+        ## 📦 下载选项
+
+        **推荐下载方式**:
+        - 🎯 **单文件版**: `BadgePatternTool-$version.exe` (直接运行，无需解压)
+        - 📦 **完整包**: `BadgePatternTool-$version-Windows.zip` (包含说明文档)
+
+        **系统要求**: Windows 7/8/10/11 (64位)
+
         ## ✨ 主要功能
-        
+
         - 🎨 图片批量导入和圆形裁剪
         - ⚙️ 可配置徽章尺寸（32mm/58mm/75mm）
         - 📐 智能A4排版（网格/紧凑模式）
         - 🖼️ 交互式图片编辑
         - 📄 多页面自动分页
         - 🖨️ 高质量导出和直接打印
-        
-        ## 🔧 使用方法
-        
-        1. 解压下载的ZIP文件
+
+        ## 🚀 快速开始
+
+        **单文件版**: 直接双击 `BadgePatternTool-$version.exe` 运行
+
+        **完整包**:
+        1. 解压 `BadgePatternTool-$version-Windows.zip`
         2. 双击运行 `BadgePatternTool.exe`
-        3. 查看 `docs/` 目录中的详细文档
-        
+        3. 查看 `README.md` 和 `User_Guide.txt` 了解详细使用方法
+
         ## 📋 更新内容
-        
+
         查看 [CHANGELOG.md](https://github.com/fenglyu1314/BadgePatternTool/blob/main/CHANGELOG.md) 了解详细更新内容。
-        
+
         ## 🆘 问题反馈
-        
+
         如遇到问题，请在 [Issues](https://github.com/fenglyu1314/BadgePatternTool/issues) 中反馈。
         "@
         
@@ -155,7 +160,7 @@ jobs:
         body: ${{ env.RELEASE_NOTES }}
         files: |
           BadgePatternTool-${{ env.VERSION }}-Windows.zip
-          dist/BadgePatternTool.exe
+          BadgePatternTool-${{ env.VERSION }}.exe
         draft: false
         prerelease: false
         generate_release_notes: false

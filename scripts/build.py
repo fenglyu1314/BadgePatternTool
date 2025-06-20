@@ -115,22 +115,76 @@ def copy_resources():
         print("dist directory does not exist")
         return False
 
-    # 只复制用户必需的文档
-    essential_docs = [
-        "README.md"  # 只保留基本说明文档
-    ]
-
-    for doc in essential_docs:
-        src_path = project_root / doc
-        if src_path.exists():
-            dst_path = dist_dir / doc
-            shutil.copy2(src_path, dst_path)
-            print(f"  Copied: {doc}")
+    # 创建用户版README
+    create_user_readme(dist_dir)
 
     # 不复制开发文档目录，用户不需要
     print("  Skipped: Development documentation (not needed for end users)")
 
     return True
+
+def create_user_readme(dist_dir):
+    """创建面向用户的README文件"""
+    print("Creating user-friendly README...")
+
+    # 获取exe文件大小
+    exe_path = dist_dir / "BadgePatternTool.exe"
+    file_size_mb = 0
+    if exe_path.exists():
+        file_size_mb = exe_path.stat().st_size / (1024 * 1024)
+
+    user_readme = f"""# BadgePatternTool - Badge Pattern Tool
+
+A professional badge making tool for image processing and layout design.
+
+## Quick Start
+
+1. **Run the Program**
+   - Double-click `BadgePatternTool.exe` to start
+   - First run may take a few seconds to load
+
+2. **Basic Usage**
+   - Import image files (JPG, PNG, BMP, GIF)
+   - Adjust image position and size in the editor
+   - Configure badge size (32mm/58mm/75mm presets available)
+   - Select layout mode (Grid or Compact)
+   - Export to PDF/PNG/JPG or print directly
+
+## System Requirements
+
+- Windows 7/8/10/11 (64-bit)
+- At least 100MB free disk space
+- Recommended 4GB RAM
+
+## Main Features
+
+- 🎨 Batch image import and circular cropping
+- ⚙️ Configurable badge sizes (32mm/58mm/75mm)
+- 📐 Smart A4 layout (Grid/Compact modes)
+- 🖼️ Interactive image editing
+- 📄 Multi-page automatic pagination
+- 🖨️ High-quality export and direct printing
+
+## File Information
+
+- `BadgePatternTool.exe` - Main program ({file_size_mb:.1f}MB)
+- `User_Guide.txt` - Detailed user guide
+- `README.md` - This file
+
+## Support
+
+For issues or questions, please visit:
+https://github.com/fenglyu1314/BadgePatternTool/issues
+
+---
+BadgePatternTool v1.5.6
+"""
+
+    readme_path = dist_dir / "README.md"
+    with open(readme_path, 'w', encoding='utf-8') as f:
+        f.write(user_readme)
+
+    print("  Created: User-friendly README.md")
 
 def optimize_executable():
     """优化可执行文件"""
