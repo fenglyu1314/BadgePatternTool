@@ -22,13 +22,23 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements-dev.txt
+        pip install -r requirements.txt
+        pip install pyinstaller>=5.0.0
         
+    - name: Verify project structure
+      run: |
+        echo "=== 项目结构检查 ==="
+        ls -la
+        echo "=== src目录 ==="
+        ls -la src/
+        echo "=== assets目录 ==="
+        ls -la src/assets/ || echo "assets目录不存在"
+
     - name: Run code quality checks
       run: |
         echo "=== 代码质量检查 ==="
         python scripts/dev_tools.py quality || echo "质量检查完成"
-        
+
     - name: Run tests
       run: |
         echo "=== 运行测试 ==="
@@ -56,6 +66,5 @@ jobs:
       with:
         name: test-build-${{ github.sha }}
         path: |
-          dist/BadgePatternTool.exe
-          dist/安装说明.txt
+          dist/
         retention-days: 3
