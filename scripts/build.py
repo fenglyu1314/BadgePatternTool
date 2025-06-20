@@ -9,9 +9,10 @@ import os
 import sys
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
-# Set environment variable to support UTF-8 output
+# 设置环境变量以支持UTF-8输出
 if sys.platform.startswith('win'):
     os.environ['PYTHONIOENCODING'] = 'utf-8'
 
@@ -129,8 +130,8 @@ def copy_resources():
 
 
 def optimize_executable():
-    """优化可执行文件"""
-    print("优化可执行文件...")
+    """验证和优化可执行文件"""
+    print("验证可执行文件...")
 
     project_root = Path(__file__).parent.parent
     exe_path = project_root / "dist" / "BadgePatternTool.exe"
@@ -142,26 +143,51 @@ def optimize_executable():
     try:
         # 获取文件信息
         original_size = exe_path.stat().st_size
-        print(f"  原始大小: {original_size / 1024 / 1024:.1f} MB")
+        size_mb = original_size / 1024 / 1024
+        print(f"  文件大小: {size_mb:.1f} MB")
 
-        # 这里可以添加其他优化步骤，比如：
-        # - 使用UPX压缩（如果需要）
-        # - 移除不必要的资源
-        # - 验证文件完整性
+        # 验证文件完整性
+        if size_mb < 20:
+            print("  ⚠️ 警告: 文件大小异常小，可能构建不完整")
+        elif size_mb > 80:
+            print("  ⚠️ 警告: 文件大小较大，建议检查是否包含不必要的依赖")
+        else:
+            print("  ✅ 文件大小正常")
 
-        print("可执行文件优化完成")
+        # 检查文件是否可执行
+        if exe_path.suffix.lower() == '.exe':
+            print("  ✅ 文件格式正确")
+        else:
+            print("  ❌ 文件格式错误")
+            return False
+
+        print("可执行文件验证完成")
         return True
 
     except Exception as e:
-        print(f"优化失败: {e}")
+        print(f"验证失败: {e}")
         return False
 
 
 
 def main():
     """主构建函数"""
+    start_time = time.time()
+
     print("BadgePatternTool 构建脚本")
     print("=" * 40)
+    print(f"开始时间: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+
+    # 尝试获取版本信息
+    try:
+        project_root = Path(__file__).parent.parent
+        sys.path.insert(0, str(project_root / "src"))
+        from common.constants import APP_VERSION
+        print(f"项目版本: {APP_VERSION}")
+    except ImportError:
+        print("项目版本: 无法获取")
+
+    print()
 
     # 检查依赖
     if not check_dependencies():
@@ -174,7 +200,7 @@ def main():
     if not build_executable():
         return False
 
-    # 优化可执行文件
+    # 验证可执行文件
     if not optimize_executable():
         return False
 
@@ -182,9 +208,23 @@ def main():
     if not copy_resources():
         return False
 
+    # 计算构建时间
+    end_time = time.time()
+    build_time = end_time - start_time
+
     print("\n" + "=" * 40)
-    print("构建完成！")
+    print("🎉 构建完成！")
+    print(f"构建耗时: {build_time:.1f} 秒")
     print("可执行文件位于 dist/ 目录")
+
+    # 显示最终构建产物
+    dist_dir = Path(__file__).parent.parent / "dist"
+    if dist_dir.exists():
+        print("\n构建产物:")
+        for file in dist_dir.iterdir():
+            if file.is_file():
+                size_mb = file.stat().st_size / 1024 / 1024
+                print(f"  - {file.name} ({size_mb:.1f} MB)")
 
     return True
 

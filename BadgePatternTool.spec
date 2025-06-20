@@ -4,7 +4,7 @@ BadgePatternTool PyInstaller 配置文件
 优化版本 - 减小文件大小，提高性能
 
 项目负责人: 喵喵mya (231750570@qq.com)
-版本: v1.5.6
+版本: 动态获取
 """
 
 import sys
@@ -14,6 +14,14 @@ from pathlib import Path
 # 项目路径 - 使用当前工作目录而不是__file__
 project_root = Path(os.getcwd())
 src_path = project_root / "src"
+
+# 动态获取版本号
+sys.path.insert(0, str(src_path))
+try:
+    from common.constants import APP_VERSION
+    version = APP_VERSION
+except ImportError:
+    version = "1.5.6"  # 备用版本号
 
 # 分析主脚本
 a = Analysis(

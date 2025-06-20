@@ -63,11 +63,11 @@ echo   🎉 打包完成！
 echo ==========================================
 echo.
 echo 可执行文件位于: dist\BadgePatternTool.exe
-echo 文件大小: 约53MB
 echo.
 echo 分发文件包括:
 echo   - BadgePatternTool.exe (主程序)
 echo   - CHANGELOG.md (更新日志)
 echo.
+echo 注意: 具体文件大小请查看构建输出
 
 pause
