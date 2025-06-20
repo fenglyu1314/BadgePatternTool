@@ -236,14 +236,15 @@ a = Analysis(
         'reportlab.rl_config',
 
         # 更多编码和压缩模块 (新增优化)
+        # 注意：不能排除zipfile，PyInstaller运行时需要
         'bz2',
         'lzma',
         'gzip',
-        'zipfile',
         'tarfile',
-        'base64',
-        'binascii',
-        'codecs',
+        # 'zipfile',  # PyInstaller需要，不能排除
+        # 'base64',   # 可能被其他模块需要，保留
+        # 'binascii', # 可能被其他模块需要，保留
+        # 'codecs',   # 编码相关，可能被需要，保留
         'locale',
         'gettext',
         'unicodedata',
