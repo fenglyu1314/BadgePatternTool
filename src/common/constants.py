@@ -5,7 +5,7 @@
 
 # 应用程序基本信息
 APP_NAME = "BadgePatternTool"
-APP_VERSION = "1.5.7"
+APP_VERSION = "1.5.8"
 APP_TITLE = "徽章图案工具"
 
 # 尺寸配置（单位：mm）
