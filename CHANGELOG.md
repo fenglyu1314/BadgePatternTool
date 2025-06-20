@@ -5,6 +5,15 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.5.3] - 2025-06-20
+
+### 修复
+- **🔧 PowerShell兼容性修复**: 修复GitHub Actions中Windows PowerShell命令兼容性问题
+  - 将`ls -la`替换为`Get-ChildItem -Force`
+  - 修复条件判断语法，使用PowerShell原生命令
+  - 确保在Windows环境下正常运行，解决"参数名称'la'不匹配"错误
+
+
 ## [1.5.2] - 2025-06-20
 
 ### 修复
