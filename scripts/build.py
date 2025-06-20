@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-项目构建脚本
-用于打包BadgePatternTool为可执行文件
+Project build script
+Package BadgePatternTool as executable file
 """
 
 import os
@@ -11,12 +11,12 @@ import shutil
 import subprocess
 from pathlib import Path
 
-# 设置环境变量以支持UTF-8输出
+# Set environment variable to support UTF-8 output
 if sys.platform.startswith('win'):
     os.environ['PYTHONIOENCODING'] = 'utf-8'
 
 def check_dependencies():
-    """检查构建依赖"""
+    """Check build dependencies"""
     print("Checking build dependencies...")
 
     try:
@@ -29,7 +29,7 @@ def check_dependencies():
         return False
 
 def clean_build_dirs():
-    """清理构建目录"""
+    """Clean build directories"""
     print("Cleaning build directories...")
 
     project_root = Path(__file__).parent.parent
@@ -41,7 +41,7 @@ def clean_build_dirs():
             shutil.rmtree(dir_path)
             print(f"  Cleaned: {dir_name}")
 
-    # 清理Python缓存文件
+    # Clean Python cache files
     for cache_dir in project_root.rglob("__pycache__"):
         if cache_dir.is_dir():
             shutil.rmtree(cache_dir)
@@ -52,23 +52,23 @@ def clean_build_dirs():
     print("  Cleaned: Python cache files")
 
 def build_executable():
-    """构建可执行文件（使用优化的.spec文件）"""
+    """Build executable file (using optimized .spec file)"""
     print("Building executable...")
 
     project_root = Path(__file__).parent.parent
     spec_file = project_root / "BadgePatternTool.spec"
 
-    # 检查.spec文件是否存在
+    # Check if .spec file exists
     if not spec_file.exists():
         print("BadgePatternTool.spec file not found")
         return False
 
     try:
-        # 使用.spec文件构建
+        # Build using .spec file
         cmd = [
             "pyinstaller",
-            "--clean",                  # 清理临时文件
-            "--noconfirm",             # 不询问覆盖
+            "--clean",                  # Clean temporary files
+            "--noconfirm",             # No confirmation for overwrite
             str(spec_file)
         ]
 
@@ -78,13 +78,13 @@ def build_executable():
         if result.returncode == 0:
             print("Build successful")
 
-            # 检查生成的文件大小
+            # Check generated file size
             exe_path = project_root / "dist" / "BadgePatternTool.exe"
             if exe_path.exists():
                 file_size_mb = exe_path.stat().st_size / (1024 * 1024)
                 print(f"Executable size: {file_size_mb:.1f} MB")
 
-                # 如果文件过大，给出警告
+                # Warning if file is too large
                 if file_size_mb > 60:
                     print("File size is large, consider further optimization")
                 elif file_size_mb < 30:
@@ -105,7 +105,7 @@ def build_executable():
         return False
 
 def copy_resources():
-    """复制用户必需的资源文件"""
+    """Copy essential user resource files"""
     print("Copying essential user files...")
 
     project_root = Path(__file__).parent.parent
@@ -115,19 +115,19 @@ def copy_resources():
         print("dist directory does not exist")
         return False
 
-    # 创建用户使用说明
+    # Create user guide
     create_user_guide(dist_dir)
 
-    # 不复制开发文档目录，用户不需要
+    # Skip development documentation, not needed for end users
     print("  Skipped: Development documentation (not needed for end users)")
 
     return True
 
 def create_user_guide(dist_dir):
-    """创建中文用户使用指南"""
+    """Create Chinese user guide"""
     print("Creating Chinese user guide...")
 
-    # 获取exe文件大小
+    # Get exe file size
     exe_path = dist_dir / "BadgePatternTool.exe"
     file_size_mb = 0
     if exe_path.exists():
@@ -217,10 +217,10 @@ BadgePatternTool v1.5.6
     with open(guide_path, 'w', encoding='utf-8') as f:
         f.write(user_guide)
 
-    print("  Created: 使用说明.md (Chinese user guide)")
+    print("  Created: User guide (Chinese version)")
 
 def optimize_executable():
-    """优化可执行文件"""
+    """Optimize executable file"""
     print("Optimizing executable...")
 
     project_root = Path(__file__).parent.parent
@@ -231,14 +231,14 @@ def optimize_executable():
         return False
 
     try:
-        # 获取文件信息
+        # Get file information
         original_size = exe_path.stat().st_size
         print(f"  Original size: {original_size / 1024 / 1024:.1f} MB")
 
-        # 这里可以添加其他优化步骤，比如：
-        # - 使用UPX压缩（如果需要）
-        # - 移除不必要的资源
-        # - 验证文件完整性
+        # Additional optimization steps can be added here:
+        # - Use UPX compression (if needed)
+        # - Remove unnecessary resources
+        # - Verify file integrity
 
         print("Executable optimization completed")
         return True
@@ -250,30 +250,30 @@ def optimize_executable():
 
 
 def main():
-    """主构建函数"""
+    """Main build function"""
     print("BadgePatternTool Build Script")
     print("=" * 40)
 
-    # 检查依赖
+    # Check dependencies
     if not check_dependencies():
         return False
 
-    # 清理构建目录
+    # Clean build directories
     clean_build_dirs()
 
-    # 构建可执行文件
+    # Build executable
     if not build_executable():
         return False
 
-    # 优化可执行文件
+    # Optimize executable
     if not optimize_executable():
         return False
 
-    # 复制资源文件
+    # Copy resource files
     if not copy_resources():
         return False
 
-    # 创建用户指南 (已在 copy_resources 中调用)
+    # Create user guide (already called in copy_resources)
 
     print("\n" + "=" * 40)
     print("Build completed successfully!")
