@@ -28,12 +28,43 @@ jobs:
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'  # 使用稳定的Python版本
-        
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~\AppData\Local\pip\Cache
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install pyinstaller>=5.0.0
+
+    - name: Install UPX for compression
+      run: |
+        echo "=== 安装UPX压缩工具 ==="
+        # 下载UPX
+        $upxVersion = "4.2.2"
+        $upxUrl = "https://github.com/upx/upx/releases/download/v$upxVersion/upx-$upxVersion-win64.zip"
+        $upxZip = "upx.zip"
+
+        Invoke-WebRequest -Uri $upxUrl -OutFile $upxZip
+        Expand-Archive -Path $upxZip -DestinationPath "upx-temp"
+
+        # 移动UPX到系统路径
+        $upxDir = Get-ChildItem "upx-temp" -Directory | Select-Object -First 1
+        Copy-Item "$($upxDir.FullName)\upx.exe" "C:\Windows\System32\"
+
+        # 验证安装
+        upx --version
+        echo "✅ UPX安装完成"
+
+        # 清理临时文件
+        Remove-Item $upxZip -Force
+        Remove-Item "upx-temp" -Recurse -Force
         
     - name: 验证项目结构
       run: |
