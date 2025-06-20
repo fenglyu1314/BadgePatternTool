@@ -1,8 +1,26 @@
 name: Build and Test
 
 on:
-  push:
-    branches: [ develop ]
+  # 手动触发构建
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: '要构建的分支'
+        required: true
+        default: 'develop'
+        type: choice
+        options:
+        - 'develop'
+        - 'main'
+      run_tests:
+        description: '是否运行完整测试'
+        required: true
+        default: 'true'
+        type: choice
+        options:
+        - 'true'
+        - 'false'
+  # 仅在PR到main分支时自动触发
   pull_request:
     branches: [ main ]
 
@@ -17,7 +35,18 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event.inputs.branch || github.head_ref || github.ref }}
       
+    - name: 显示构建信息
+      run: |
+        echo "=== 构建信息 ==="
+        echo "触发方式: ${{ github.event_name }}"
+        echo "构建分支: ${{ github.event.inputs.branch || github.head_ref || github.ref }}"
+        echo "运行测试: ${{ github.event.inputs.run_tests || 'true' }}"
+        echo "提交SHA: ${{ github.sha }}"
+        echo "==================="
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
@@ -45,6 +74,7 @@ jobs:
         echo "质量检查完成"
 
     - name: 运行CI测试
+      if: github.event.inputs.run_tests == 'true' || github.event_name == 'pull_request'
       run: |
         echo "=== 运行CI安全测试 ==="
         python scripts/ci_tests.py
@@ -69,7 +99,7 @@ jobs:
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: build-${{ github.sha }}
+        name: ${{ github.event_name == 'workflow_dispatch' && format('manual-build-{0}-{1}', github.event.inputs.branch, github.sha) || format('pr-build-{0}', github.sha) }}
         path: |
           dist/
         retention-days: 7
