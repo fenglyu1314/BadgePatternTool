@@ -3,8 +3,8 @@
 实现BadgePatternTool的主界面布局
 """
 
-import sys
-import os
+import traceback
+from io import BytesIO
 
 # PySide6 GUI组件导入
 from PySide6.QtWidgets import (
@@ -18,73 +18,81 @@ from PySide6.QtCore import Qt, QTimer, QSize, QPoint
 from PySide6.QtGui import QAction, QIcon, QPixmap, QPainter
 from PySide6.QtPrintSupport import QPrinter
 from PIL import Image
-from io import BytesIO
-import traceback
 
-# 添加父目录到路径以便导入模块
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# 导入公共模块
+from common.constants import (
+    APP_TITLE, APP_VERSION, WINDOW_WIDTH, WINDOW_HEIGHT,
+    DEFAULT_SPACING_MM, DEFAULT_MARGIN_MM, DEFAULT_LAYOUT, DEFAULT_EXPORT_FORMAT,
+    MAX_IMAGE_COUNT, COLUMN_WIDTHS
+)
+from common.path_utils import get_icon_path
+from common.error_handler import logger, show_error_message, show_info_message
 
 # 项目模块导入
-from utils.config import (
-    APP_TITLE, APP_VERSION, WINDOW_WIDTH, WINDOW_HEIGHT,
-    DEFAULT_SPACING, DEFAULT_MARGIN, DEFAULT_LAYOUT, DEFAULT_EXPORT_FORMAT,
-    MAX_IMAGE_COUNT, app_config
-)
+from utils.config import app_config
 from utils.file_handler import FileHandler, ImageItem
 from core.image_processor import ImageProcessor, CircleEditor
 from core.layout_engine import LayoutEngine
 from core.export_manager import ExportManager
-from ui.interactive_preview_label import InteractiveScrollArea
 from ui.interactive_image_editor import InteractiveImageEditor
+from ui.multi_page_preview_widget import MultiPagePreviewWidget
 
 class MainWindow(QMainWindow):
     """主窗口类"""
     
     def __init__(self):
         super().__init__()
-        
-        # 初始化业务逻辑组件
-        self.file_handler = FileHandler()
-        self.image_processor = ImageProcessor()
-        self.layout_engine = LayoutEngine()
-        self.export_manager = ExportManager()
-        self.image_items = []  # 存储ImageItem对象列表
-        self.current_selection = None  # 当前选中的图片项
-        self.current_editor = None  # 当前的圆形编辑器
 
-        # 初始化界面变量
-        self.layout_mode = DEFAULT_LAYOUT
-        self.spacing_value = DEFAULT_SPACING
-        self.margin_value = DEFAULT_MARGIN
-        self.export_format = DEFAULT_EXPORT_FORMAT.lower()
-        self.scale_value = 1.0
-        self.offset_x_value = 0
-        self.offset_y_value = 0
-        self.preview_scale_value = 0.5  # 预览缩放比例
+        try:
+            # 初始化业务逻辑组件
+            self.file_handler = FileHandler()
+            self.image_processor = ImageProcessor()
+            self.layout_engine = LayoutEngine()
+            self.export_manager = ExportManager()
+            self.image_items = []  # 存储ImageItem对象列表
+            self.current_selection = None  # 当前选中的图片项
+            self.current_editor = None  # 当前的圆形编辑器
 
-        # 初始化防抖定时器
-        self.setup_debounce_timers()
+            # 初始化界面变量
+            self.layout_mode = DEFAULT_LAYOUT
+            self.spacing_value = DEFAULT_SPACING_MM
+            self.margin_value = DEFAULT_MARGIN_MM
+            self.export_format = DEFAULT_EXPORT_FORMAT.lower()
+            self.scale_value = 1.0
+            self.offset_x_value = 0
+            self.offset_y_value = 0
+            self.preview_scale_value = 0.5  # 预览缩放比例
 
-        # A4预览缓存状态
-        self._last_preview_hash = None
-        self._preview_cache_valid = False
+            # 初始化防抖定时器
+            self.setup_debounce_timers()
 
-        # 打印页面缓存（高分辨率版本）
-        self._cached_print_pages = []
+            # A4预览缓存状态
+            self._last_preview_hash = None
+            self._preview_cache_valid = False
 
-        # 设置配置监听器
-        app_config.add_listener(self.on_config_changed)
+            # 打印页面缓存（高分辨率版本）
+            self._cached_print_pages = []
 
-        self.setup_window()
-        self.create_menu()
-        self.create_layout()
-        self.create_status_bar()
+            # 设置配置监听器
+            app_config.add_listener(self.on_config_changed)
 
-        # 初始化时显示灰色圆形预览
-        self.update_layout_preview()
+            self.setup_window()
+            self.create_menu()
+            self.create_layout()
+            self.create_status_bar()
 
-        # 延迟适应窗口（等待界面完全加载）
-        QTimer.singleShot(100, self.fit_preview_to_window)
+            # 初始化时显示灰色圆形预览
+            self.update_layout_preview()
+
+            # 延迟适应窗口（等待界面完全加载）
+            QTimer.singleShot(100, self.fit_preview_to_window)
+
+            logger.info("主窗口初始化完成")
+
+        except Exception as e:
+            logger.error(f"主窗口初始化失败: {e}", exc_info=True)
+            show_error_message("初始化错误", f"程序初始化失败：{str(e)}")
+            raise
 
     def setup_debounce_timers(self):
         """设置防抖定时器"""
@@ -115,17 +123,18 @@ class MainWindow(QMainWindow):
 
         # 设置窗口图标
         try:
-            icon_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "icon.ico")
-            if os.path.exists(icon_path):
-                icon = QIcon(icon_path)
+            icon_path = get_icon_path("icon.ico")
+            if icon_path.exists():
+                icon = QIcon(str(icon_path))
                 if not icon.isNull():
                     self.setWindowIcon(icon)
+                    logger.info(f"窗口图标加载成功: {icon_path.name}")
                 else:
-                    print(f"警告: 图标文件无效 {icon_path}")
+                    logger.warning("图标文件无效")
             else:
-                print(f"警告: 找不到图标文件 {icon_path}")
+                logger.warning("未找到窗口图标文件")
         except Exception as e:
-            print(f"设置窗口图标失败: {e}")
+            logger.error(f"设置窗口图标失败: {e}")
 
         # 设置窗口居中
         screen = self.screen().availableGeometry()
@@ -181,21 +190,10 @@ class MainWindow(QMainWindow):
         
         # 编辑菜单
         edit_menu = menubar.addMenu("编辑")
-        
-        select_all_action = QAction("全选", self)
-        select_all_action.triggered.connect(self.select_all)
-        edit_menu.addAction(select_all_action)
-        
+
         clear_all_action = QAction("清空列表", self)
         clear_all_action.triggered.connect(self.clear_all)
         edit_menu.addAction(clear_all_action)
-        
-        # 视图菜单
-        view_menu = menubar.addMenu("视图")
-        
-        refresh_action = QAction("刷新预览", self)
-        refresh_action.triggered.connect(self.refresh_preview)
-        view_menu.addAction(refresh_action)
         
         # 帮助菜单
         help_menu = menubar.addMenu("帮助")
@@ -214,7 +212,7 @@ class MainWindow(QMainWindow):
         main_layout = QHBoxLayout(central_widget)
         
         # 创建分割器
-        splitter = QSplitter(Qt.Horizontal)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
         main_layout.addWidget(splitter)
         
         # 创建四个主要区域
@@ -229,7 +227,7 @@ class MainWindow(QMainWindow):
 
         # 设置固定宽度（总计1380px，窗口1420px，留40px边距）
         # 图片列表: 260px, 单图编辑: 340px, A4预览: 480px, 控制面板: 300px
-        column_widths = [260, 340, 480, 300]
+        column_widths = COLUMN_WIDTHS
         splitter.setSizes(column_widths)
 
         # 设置各个面板的固定宽度
@@ -256,14 +254,14 @@ class MainWindow(QMainWindow):
         self.image_listbox.itemSelectionChanged.connect(self.on_image_select)
 
         # 设置列表显示模式和样式
-        self.image_listbox.setViewMode(QListWidget.ListMode)  # 列表模式，显示图标和文字
+        self.image_listbox.setViewMode(QListWidget.ViewMode.ListMode)  # 列表模式，显示图标和文字
         self.image_listbox.setIconSize(QSize(48, 48))  # 设置图标大小
         self.image_listbox.setSpacing(2)  # 设置项目间距
         self.image_listbox.setUniformItemSizes(True)  # 统一项目大小
 
         # 启用拖拽功能
         self.image_listbox.setAcceptDrops(True)
-        self.image_listbox.setDragDropMode(QListWidget.DropOnly)
+        self.image_listbox.setDragDropMode(QListWidget.DragDropMode.DropOnly)
 
         # 重写拖拽事件处理
         self.setup_drag_drop()
@@ -311,33 +309,34 @@ class MainWindow(QMainWindow):
 
     def create_a4_preview_panel(self, parent):
         """创建A4排版预览面板（第三列）"""
-        # A4预览面板框架（使用更紧凑的标题）
-        preview_frame = QGroupBox("A4预览")
-        preview_frame.setStyleSheet("QGroupBox { font-size: 10px; font-weight: bold; padding-top: 10px; }")
+        # A4预览面板框架（与其他区域保持一致的样式）
+        preview_frame = QGroupBox("排版预览")
         parent.addWidget(preview_frame)
 
         layout = QVBoxLayout(preview_frame)
-        layout.setContentsMargins(5, 5, 5, 5)  # 减少边距
-        layout.setSpacing(3)  # 减少间距
 
-        # 紧凑的信息栏（单行）
+        # 信息栏
         info_layout = QHBoxLayout()
         info_layout.setContentsMargins(0, 0, 0, 0)
         info_layout.setSpacing(5)
 
-        # 布局信息标签（更紧凑）
+        # 布局信息标签（与其他区域保持一致的字体大小）
         self.layout_info_label = QLabel("每页可放置: 0个 | 当前: 0个")
-        self.layout_info_label.setStyleSheet("color: #666; font-size: 9px; padding: 2px;")
-        self.layout_info_label.setMaximumHeight(20)  # 限制高度
+        self.layout_info_label.setStyleSheet("color: #666; padding: 2px;")
         info_layout.addWidget(self.layout_info_label)
 
         info_layout.addStretch()  # 推到右边
 
+        # 缩放倍率显示标签
+        self.preview_scale_info_label = QLabel("缩放: 100%")
+        self.preview_scale_info_label.setStyleSheet("color: #666; padding: 2px; font-size: 11px;")
+        info_layout.addWidget(self.preview_scale_info_label)
+
         layout.addLayout(info_layout)
 
-        # 多页面预览组件（占用大部分空间）
-        from ui.multi_page_preview_widget import MultiPagePreviewWidget
+        # A4预览组件（占用大部分空间）- 使用多页面预览组件
         self.multi_page_preview = MultiPagePreviewWidget()
+        self.multi_page_preview.setMinimumHeight(400)
         # 设置拉伸因子，让预览组件占用大部分空间
         layout.addWidget(self.multi_page_preview, 1)  # 拉伸因子为1
 
@@ -354,14 +353,11 @@ class MainWindow(QMainWindow):
         reset_view_btn.clicked.connect(self.reset_preview_view)
         view_control_layout.addWidget(reset_view_btn)
 
-        refresh_btn = QPushButton("刷新预览")
-        refresh_btn.clicked.connect(self.update_layout_preview)
-        view_control_layout.addWidget(refresh_btn)
-
         layout.addLayout(view_control_layout)
 
-        # 保持兼容性：创建一个虚拟的layout_preview_label
-        self.layout_preview_label = None  # 标记为多页面模式
+        # 连接预览标签的信号
+        if hasattr(self.multi_page_preview, 'scale_changed'):
+            self.multi_page_preview.scale_changed.connect(self.on_preview_scale_changed)
 
     def create_control_panel(self, parent):
         """创建排版控制和导出面板（第四列）"""
@@ -400,7 +396,7 @@ class MainWindow(QMainWindow):
         self.spacing_label = QLabel(f"间距: {self.spacing_value}mm")
         spacing_layout.addWidget(self.spacing_label)
 
-        self.spacing_slider = QSlider(Qt.Horizontal)
+        self.spacing_slider = QSlider(Qt.Orientation.Horizontal)
         self.spacing_slider.setRange(0, 20)
         self.spacing_slider.setValue(int(self.spacing_value))
         self.spacing_slider.valueChanged.connect(self.on_spacing_change)
@@ -415,51 +411,67 @@ class MainWindow(QMainWindow):
         self.margin_label = QLabel(f"边距: {self.margin_value}mm")
         margin_layout.addWidget(self.margin_label)
 
-        self.margin_slider = QSlider(Qt.Horizontal)
+        self.margin_slider = QSlider(Qt.Orientation.Horizontal)
         self.margin_slider.setRange(5, 30)  # 最小5mm（打印机限制），最大30mm
         self.margin_slider.setValue(int(self.margin_value))
         self.margin_slider.valueChanged.connect(self.on_margin_change)
         margin_layout.addWidget(self.margin_slider)
 
-        # 圆形尺寸设置
-        size_group = QGroupBox("圆形尺寸")
+        # 徽章尺寸设置
+        size_group = QGroupBox("徽章尺寸")
         layout.addWidget(size_group)
 
         size_layout = QVBoxLayout(size_group)
 
-        # 直径设置
-        diameter_layout = QHBoxLayout()
-        diameter_layout.addWidget(QLabel("直径:"))
+        # 徽章尺寸设置
+        badge_layout = QHBoxLayout()
+        badge_layout.addWidget(QLabel("徽章:"))
 
-        self.diameter_spinbox = QSpinBox()
-        self.diameter_spinbox.setRange(10, 100)  # 10-100mm
-        self.diameter_spinbox.setValue(int(app_config.badge_diameter_mm))
-        self.diameter_spinbox.setSuffix("mm")
-        self.diameter_spinbox.valueChanged.connect(self.on_diameter_change)
-        diameter_layout.addWidget(self.diameter_spinbox)
+        self.badge_size_spinbox = QSpinBox()
+        self.badge_size_spinbox.setRange(10, 100)  # 10-100mm，支持75mm
+        self.badge_size_spinbox.setValue(int(app_config.badge_size_mm))
+        self.badge_size_spinbox.setSuffix("mm")
+        self.badge_size_spinbox.valueChanged.connect(self.on_badge_size_change)
+        badge_layout.addWidget(self.badge_size_spinbox)
 
-        size_layout.addLayout(diameter_layout)
+        size_layout.addLayout(badge_layout)
+
+        # 出血半径设置
+        bleed_layout = QHBoxLayout()
+        bleed_layout.addWidget(QLabel("出血半径:"))
+
+        self.bleed_size_spinbox = QSpinBox()
+        self.bleed_size_spinbox.setRange(0, 10)  # 0-10mm（半径）
+        self.bleed_size_spinbox.setValue(int(app_config.bleed_size_mm))
+        self.bleed_size_spinbox.setSuffix("mm")
+        self.bleed_size_spinbox.valueChanged.connect(self.on_bleed_size_change)
+        bleed_layout.addWidget(self.bleed_size_spinbox)
+
+        size_layout.addLayout(bleed_layout)
+
+        # 总直径显示
+        self.total_diameter_label = QLabel(f"总直径: {app_config.badge_diameter_mm}mm")
+        self.total_diameter_label.setStyleSheet("font-weight: bold; color: #666;")
+        size_layout.addWidget(self.total_diameter_label)
 
         # 预设按钮
         preset_layout = QHBoxLayout()
 
-        btn_25 = QPushButton("25mm")
-        btn_25.clicked.connect(lambda: self.set_diameter(25))
-        preset_layout.addWidget(btn_25)
-
-        btn_32 = QPushButton("32mm")
-        btn_32.clicked.connect(lambda: self.set_diameter(32))
+        btn_32 = QPushButton("32+5")
+        btn_32.clicked.connect(lambda: self.set_badge_preset(32, 5))
         preset_layout.addWidget(btn_32)
 
-        btn_58 = QPushButton("58mm")
-        btn_58.clicked.connect(lambda: self.set_diameter(58))
+        btn_58 = QPushButton("58+5")
+        btn_58.clicked.connect(lambda: self.set_badge_preset(58, 5))
         preset_layout.addWidget(btn_58)
 
-        btn_68 = QPushButton("68mm")
-        btn_68.clicked.connect(lambda: self.set_diameter(68))
-        preset_layout.addWidget(btn_68)
+        btn_75 = QPushButton("75+5")
+        btn_75.clicked.connect(lambda: self.set_badge_preset(75, 5))
+        preset_layout.addWidget(btn_75)
 
         size_layout.addLayout(preset_layout)
+
+
 
         # 导出设置组
         export_group = QGroupBox("导出设置")
@@ -494,17 +506,55 @@ class MainWindow(QMainWindow):
         export_layout.addWidget(print_btn)
 
         # 添加弹性空间
-        layout.addItem(QSpacerItem(20, 40, QSizePolicy.Minimum, QSizePolicy.Expanding))
+        layout.addItem(QSpacerItem(20, 40, QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Expanding))
 
     def create_edit_controls(self, parent_layout):
         """创建编辑控制区域"""
+        # 遮罩透明度设置（移到最上面）
+        mask_group = QGroupBox("遮罩设置")
+        parent_layout.addWidget(mask_group)
+
+        mask_layout = QVBoxLayout(mask_group)
+
+        # 圆形外部透明度
+        outside_layout = QHBoxLayout()
+        outside_layout.addWidget(QLabel("外部区域:"))
+
+        self.outside_opacity_slider = QSlider(Qt.Orientation.Horizontal)
+        self.outside_opacity_slider.setRange(0, 100)
+        self.outside_opacity_slider.setValue(app_config.outside_opacity)
+        self.outside_opacity_slider.valueChanged.connect(self.on_outside_opacity_change)
+        outside_layout.addWidget(self.outside_opacity_slider)
+
+        self.outside_opacity_label = QLabel(f"{app_config.outside_opacity}%")
+        self.outside_opacity_label.setMinimumWidth(40)
+        outside_layout.addWidget(self.outside_opacity_label)
+
+        mask_layout.addLayout(outside_layout)
+
+        # 出血区透明度
+        bleed_opacity_layout = QHBoxLayout()
+        bleed_opacity_layout.addWidget(QLabel("出血区:"))
+
+        self.bleed_opacity_slider = QSlider(Qt.Orientation.Horizontal)
+        self.bleed_opacity_slider.setRange(0, 100)
+        self.bleed_opacity_slider.setValue(app_config.bleed_opacity)
+        self.bleed_opacity_slider.valueChanged.connect(self.on_bleed_opacity_change)
+        bleed_opacity_layout.addWidget(self.bleed_opacity_slider)
+
+        self.bleed_opacity_label = QLabel(f"{app_config.bleed_opacity}%")
+        self.bleed_opacity_label.setMinimumWidth(40)
+        bleed_opacity_layout.addWidget(self.bleed_opacity_label)
+
+        mask_layout.addLayout(bleed_opacity_layout)
+
         # 缩放控制（直接添加，无框框）
         self.scale_label = QLabel("图片缩放: 1.0")
         self.scale_label.setStyleSheet("font-weight: bold; margin-top: 10px;")
         parent_layout.addWidget(self.scale_label)
 
-        self.scale_slider = QSlider(Qt.Horizontal)
-        self.scale_slider.setRange(10, 300)  # 0.1 到 3.0
+        self.scale_slider = QSlider(Qt.Orientation.Horizontal)
+        self.scale_slider.setRange(10, 1000)  # 0.1 到 10.0
         self.scale_slider.setValue(100)  # 1.0
         self.scale_slider.valueChanged.connect(self.on_scale_change)
         parent_layout.addWidget(self.scale_slider)
@@ -514,7 +564,7 @@ class MainWindow(QMainWindow):
         self.offset_x_label.setStyleSheet("font-weight: bold; margin-top: 5px;")
         parent_layout.addWidget(self.offset_x_label)
 
-        self.offset_x_slider = QSlider(Qt.Horizontal)
+        self.offset_x_slider = QSlider(Qt.Orientation.Horizontal)
         self.offset_x_slider.setRange(-100, 100)
         self.offset_x_slider.setValue(0)
         self.offset_x_slider.valueChanged.connect(self.on_position_change)
@@ -525,7 +575,7 @@ class MainWindow(QMainWindow):
         self.offset_y_label.setStyleSheet("font-weight: bold; margin-top: 5px;")
         parent_layout.addWidget(self.offset_y_label)
 
-        self.offset_y_slider = QSlider(Qt.Horizontal)
+        self.offset_y_slider = QSlider(Qt.Orientation.Horizontal)
         self.offset_y_slider.setRange(-100, 100)
         self.offset_y_slider.setValue(0)
         self.offset_y_slider.valueChanged.connect(self.on_position_change)
@@ -911,10 +961,7 @@ class MainWindow(QMainWindow):
             self.status_bar.showMessage("导出失败")
             QMessageBox.critical(self, "错误", f"导出过程中发生错误：{str(e)}")
         
-    def select_all(self):
-        """全选"""
-        QMessageBox.information(self, "提示", "全选功能开发中...")
-        
+
     def clear_all(self):
         """清空列表"""
         if self.image_items:
@@ -988,10 +1035,7 @@ class MainWindow(QMainWindow):
             # 更新预览
             self.update_layout_preview()
         
-    def refresh_preview(self):
-        """刷新预览"""
-        QMessageBox.information(self, "提示", "刷新预览功能开发中...")
-        
+
     def on_image_select(self):
         """图片选择事件"""
         current_row = self.image_listbox.currentRow()
@@ -1101,7 +1145,7 @@ class MainWindow(QMainWindow):
     def on_scale_change(self, value):
         """缩放改变事件（带防抖）"""
         if self.current_editor:
-            scale = value / 100.0  # 转换为0.1-3.0范围
+            scale = value / 100.0  # 转换为0.1-10.0范围
 
             # 避免重复处理相同的值
             if abs(self.scale_value - scale) < 0.01:
@@ -1190,9 +1234,10 @@ class MainWindow(QMainWindow):
 
     def show_layout_hint(self):
         """显示排版提示"""
-        self.layout_preview_label.setText("导入图片后\n自动显示排版预览\n\n支持鼠标滚轮缩放\n支持拖动平移")
-        self.layout_preview_label.setStyleSheet("border: 1px solid #ccc; background-color: #f5f5f5; color: #666;")
-        self.layout_info_label.setText("")
+        # MultiPagePreviewWidget 不支持 setText，改为在状态栏显示提示
+        self.layout_info_label.setText("导入图片后自动显示排版预览")
+        if hasattr(self, 'status_bar'):
+            self.status_bar.showMessage("支持鼠标滚轮缩放和拖动平移")
 
     def on_spacing_change(self, value):
         """间距改变事件（带防抖）"""
@@ -1213,11 +1258,17 @@ class MainWindow(QMainWindow):
         self.layout_preview_timer.stop()
         self.layout_preview_timer.start(self.debounce_delay)
 
+    def on_preview_scale_changed(self, scale):
+        """处理多页面预览组件的缩放变化"""
+        # 更新缩放倍率显示
+        percentage = int(scale * 100)
+        self.preview_scale_info_label.setText(f"缩放: {percentage}%")
+
     def on_preview_scale_change(self, value):
         """预览缩放改变事件（带防抖）"""
         scale = value / 100.0
         self.preview_scale_value = scale
-        self.preview_scale_label.setText(f"预览缩放: {value}%")
+        self.preview_scale_info_label.setText(f"缩放: {value}%")
 
         # 同步到多页面预览的缩放
         if hasattr(self, 'multi_page_preview'):
@@ -1248,6 +1299,11 @@ class MainWindow(QMainWindow):
         hash_data.append(f"spacing:{self.spacing_value}")
         hash_data.append(f"margin:{self.margin_value}")
         hash_data.append(f"preview_scale:{self.preview_scale_value}")
+
+        # 徽章尺寸参数（重要：影响圆形大小和布局）
+        hash_data.append(f"badge_size:{app_config.badge_size_mm}")
+        hash_data.append(f"bleed_size:{app_config.bleed_size_mm}")
+        hash_data.append(f"badge_diameter:{app_config.badge_diameter_mm}")
 
         # 图片参数
         for item in self.image_items:
@@ -1492,27 +1548,99 @@ class MainWindow(QMainWindow):
     def fit_preview_to_window(self):
         """适应窗口显示预览"""
         try:
-            self.multi_page_preview.fit_to_window()
+            # 用户主动点击适应窗口按钮时，强制适应并重置手动缩放标志
+            self.multi_page_preview.user_has_manually_scaled = False
+            self.multi_page_preview.fit_to_window(force=True)
             self.status_bar.showMessage("预览已适应窗口大小")
         except Exception as e:
             print(f"适应窗口失败: {e}")
 
     def reset_preview_view(self):
-        """重置预览视图"""
+        """重置预览视图到1:1比例"""
         try:
-            self.multi_page_preview.set_scale(0.5)  # 重置为默认缩放
-            self.status_bar.showMessage("预览视图已重置")
+            self.multi_page_preview.set_scale(1.0)  # 重置为1:1比例（100%）
+            self.multi_page_preview.canvas_offset = QPoint(0, 0)  # 重置画布偏移，确保居中
+            self.multi_page_preview.user_has_manually_scaled = False  # 重置手动缩放标志
+            self.multi_page_preview.update()  # 刷新显示
+            self.status_bar.showMessage("预览视图已重置为1:1比例")
         except Exception as e:
             print(f"重置视图失败: {e}")
 
+    def on_badge_size_change(self, value):
+        """徽章尺寸改变事件"""
+        app_config.badge_size_mm = value
+        self.update_total_diameter_label()
+        self.status_bar.showMessage(f"徽章尺寸已设置为: {value}mm")
+
+        # 更新交互式编辑器的遮罩半径
+        if hasattr(self, 'interactive_editor') and self.interactive_editor:
+            self.interactive_editor.update_mask_radius()
+
+        # 触发排版预览更新
+        self.update_layout_preview()
+
+    def on_bleed_size_change(self, value):
+        """出血半径改变事件"""
+        app_config.bleed_size_mm = value
+        self.update_total_diameter_label()
+        self.status_bar.showMessage(f"出血半径已设置为: {value}mm")
+
+        # 更新交互式编辑器的遮罩半径
+        if hasattr(self, 'interactive_editor') and self.interactive_editor:
+            self.interactive_editor.update_mask_radius()
+
+        # 触发排版预览更新
+        self.update_layout_preview()
+
+
+
+    def set_badge_preset(self, badge_size, bleed_size):
+        """设置徽章预设"""
+        self.badge_size_spinbox.setValue(badge_size)
+        self.bleed_size_spinbox.setValue(bleed_size)
+        app_config.badge_size_mm = badge_size
+        app_config.bleed_size_mm = bleed_size
+        self.update_total_diameter_label()
+        self.status_bar.showMessage(f"预设: 徽章{badge_size}mm + 出血半径{bleed_size}mm")
+
+        # 更新交互式编辑器的遮罩半径
+        if hasattr(self, 'interactive_editor') and self.interactive_editor:
+            self.interactive_editor.update_mask_radius()
+
+        # 触发排版预览更新
+        self.update_layout_preview()
+
+    def update_total_diameter_label(self):
+        """更新总直径标签"""
+        total = app_config.badge_diameter_mm
+        self.total_diameter_label.setText(f"总直径: {total}mm")
+
+    def on_outside_opacity_change(self, value):
+        """外部区域透明度改变事件"""
+        app_config.outside_opacity = value
+        self.outside_opacity_label.setText(f"{value}%")
+        # 更新单图编辑器
+        if hasattr(self, 'interactive_editor') and self.interactive_editor:
+            self.interactive_editor.repaint()
+        self.status_bar.showMessage(f"外部区域透明度: {value}%")
+
+    def on_bleed_opacity_change(self, value):
+        """出血区透明度改变事件"""
+        app_config.bleed_opacity = value
+        self.bleed_opacity_label.setText(f"{value}%")
+        # 更新单图编辑器
+        if hasattr(self, 'interactive_editor') and self.interactive_editor:
+            self.interactive_editor.repaint()
+        self.status_bar.showMessage(f"出血区透明度: {value}%")
+
+    # 保持向后兼容
     def on_diameter_change(self, value):
-        """圆形直径改变事件"""
+        """圆形直径改变事件（向后兼容）"""
         app_config.badge_diameter_mm = value
         self.status_bar.showMessage(f"圆形直径已设置为: {value}mm")
 
     def set_diameter(self, diameter):
-        """设置圆形直径"""
-        self.diameter_spinbox.setValue(diameter)
+        """设置圆形直径（向后兼容）"""
         app_config.badge_diameter_mm = diameter
         self.status_bar.showMessage(f"圆形直径已设置为: {diameter}mm")
 
@@ -1522,6 +1650,9 @@ class MainWindow(QMainWindow):
         _ = old_value, new_value
 
         if key == 'badge_diameter_mm':
+            # 清理所有缓存以释放内存
+            self.clear_all_caches()
+
             # 重新创建所有编辑器和预览
             self.current_editor = None
 
@@ -1532,6 +1663,31 @@ class MainWindow(QMainWindow):
             # 延迟更新布局预览
             self.layout_preview_timer.stop()
             self.layout_preview_timer.start(self.layout_debounce_delay)
+
+    def clear_all_caches(self):
+        """清理所有缓存，释放内存"""
+        try:
+            # 清理图片处理器缓存
+            if hasattr(self, 'image_processor'):
+                self.image_processor.clear_cache()
+
+            # 清理布局引擎缓存
+            if hasattr(self, 'layout_engine') and hasattr(self.layout_engine, 'clear_cache'):
+                self.layout_engine.clear_cache()
+
+            # 清理交互式编辑器缓存
+            if hasattr(self, 'interactive_editor'):
+                self.interactive_editor._invalidate_cache()
+
+            # 清理A4预览缓存
+            self._last_preview_hash = None
+            self._preview_cache_valid = False
+            self._cached_print_pages.clear()
+
+            logger.info("所有缓存已清理")
+
+        except Exception as e:
+            logger.error(f"清理缓存失败: {e}", exc_info=True)
 
     def print_layout(self):
         """打印当前A4排版 - 使用自定义打印对话框"""
