@@ -173,11 +173,13 @@ A professional badge making tool for image processing and layout design.
 
 ## Support
 
-For issues or questions, please visit:
-https://github.com/fenglyu1314/BadgePatternTool/issues
+For issues or questions, please contact:
+- **Developer**: 喵喵mya (231750570@qq.com)
+- **GitHub Issues**: https://github.com/fenglyu1314/BadgePatternTool/issues
 
 ---
 BadgePatternTool v1.5.6
+**Developer**: 喵喵mya
 """
 
     readme_path = dist_dir / "README.md"

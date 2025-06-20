@@ -2018,7 +2018,11 @@ class MainWindow(QMainWindow):
             self,
             "关于",
             f"{APP_TITLE} v{APP_VERSION}\n\n"
-            "徽章图案制作工具\n"
+            "专业的徽章图案制作工具\n"
             "支持图片裁剪和A4排版\n\n"
-            "基于PySide6开发"
+            "开发者: 喵喵mya\n"
+            "邮箱: 231750570@qq.com\n"
+            "GitHub: https://github.com/fenglyu1314/BadgePatternTool\n\n"
+            "基于PySide6开发\n"
+            "版权所有 © 2025 喵喵mya"
         )

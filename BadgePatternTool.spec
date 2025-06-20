@@ -2,6 +2,9 @@
 """
 BadgePatternTool PyInstaller 配置文件
 优化版本 - 减小文件大小，提高性能
+
+项目负责人: 喵喵mya (231750570@qq.com)
+版本: v1.5.6
 """
 
 import sys
