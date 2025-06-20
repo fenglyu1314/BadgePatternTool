@@ -439,7 +439,6 @@ class InteractiveImageEditor(QLabel):
         painter.save()
 
         from PySide6.QtGui import QPainterPath
-        from utils.config import app_config
 
         # 计算安全区域矩形（等于徽章尺寸，不含出血区）
         total_radius_mm = app_config.badge_diameter_mm / 2  # 总半径（包含出血区）
@@ -503,7 +502,7 @@ class InteractiveImageEditor(QLabel):
         """绘制安全区边框（徽章尺寸，不含出血区）"""
         painter.save()
 
-        from utils.config import app_config
+
 
         # 计算安全区半径（等于徽章尺寸的一半）
         total_radius_mm = app_config.badge_diameter_mm / 2  # 总半径（包含出血区）

@@ -8,7 +8,7 @@ import os
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
     QSpinBox, QPushButton, QGroupBox, QCheckBox, QRadioButton,
-    QWidget
+    QWidget, QMessageBox
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap, QPainter, QFont
@@ -16,6 +16,7 @@ from PySide6.QtPrintSupport import QPrinter, QPrinterInfo
 
 # 导入主界面的颜色配置
 from utils.config import COLORS
+from common.error_handler import logger
 
 # 添加父目录到路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -614,20 +615,17 @@ class CustomPrintDialog(QDialog):
                     self._show_qt_printer_properties(printer_info)
 
             except Exception as subprocess_error:
-                from common.error_handler import logger
                 logger.warning(f"Windows API调用失败: {subprocess_error}")
                 # 如果Windows API失败，尝试使用Qt的打印机属性对话框
                 self._show_qt_printer_properties(printer_info)
 
         except Exception as e:
-            from PySide6.QtWidgets import QMessageBox
             QMessageBox.warning(self, "错误", f"无法打开打印机属性：{str(e)}")
 
     def _show_qt_printer_properties(self, printer_info):
         """使用Qt显示打印机属性对话框"""
         try:
-            from PySide6.QtPrintSupport import QPrinter, QPageSetupDialog
-            from PySide6.QtWidgets import QMessageBox
+            from PySide6.QtPrintSupport import QPageSetupDialog
 
             # 创建打印机对象
             printer = QPrinter(QPrinter.PrinterMode.HighResolution)
@@ -644,10 +642,8 @@ class CustomPrintDialog(QDialog):
                 print(f"打印机属性设置已更新: {printer_info.printerName()}")
 
         except Exception as e:
-            from common.error_handler import logger
             logger.error(f"Qt打印机属性对话框失败: {e}", exc_info=True)
             # 最后的备选方案：显示手动指导
-            from PySide6.QtWidgets import QMessageBox
             QMessageBox.information(
                 self,
                 "打印机属性",
@@ -664,10 +660,9 @@ class CustomPrintDialog(QDialog):
         """开始打印"""
         settings = self.get_print_settings()
         if settings['printer'] is None:
-            from PySide6.QtWidgets import QMessageBox
             QMessageBox.warning(self, "错误", "请选择一个打印机")
             return
-            
+
         # 发送打印请求信号
         self.print_requested.emit(settings)
         self.accept()

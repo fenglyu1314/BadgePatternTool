@@ -14,8 +14,8 @@ from PySide6.QtWidgets import (
     QMessageBox, QStatusBar, QSplitter, QGroupBox,
     QSpacerItem, QSizePolicy
 )
-from PySide6.QtCore import Qt, QTimer, QSize, QPoint
-from PySide6.QtGui import QAction, QIcon, QPixmap, QPainter
+from PySide6.QtCore import Qt, QTimer, QSize, QPoint, QMarginsF, QRect
+from PySide6.QtGui import QAction, QIcon, QPixmap, QPainter, QPageLayout, QBitmap
 from PySide6.QtPrintSupport import QPrinter
 from PIL import Image
 
@@ -1742,7 +1742,7 @@ class MainWindow(QMainWindow):
     def _execute_custom_print(self, settings, expanded_images):
         """执行自定义打印"""
         try:
-            from PySide6.QtPrintSupport import QPrinter
+
 
             # 获取选中的打印机
             printer_info = settings['printer']
@@ -1765,8 +1765,7 @@ class MainWindow(QMainWindow):
 
             # 设置页边距（转换为点）
             margins = settings['margins']
-            from PySide6.QtCore import QMarginsF
-            from PySide6.QtGui import QPageLayout
+
 
             printer_margins = QMarginsF(
                 margins['left'] * 2.83465,   # mm to points
@@ -1962,8 +1961,7 @@ class MainWindow(QMainWindow):
 
             # 转换为QPixmap
             from PIL.ImageQt import ImageQt
-            from PySide6.QtGui import QPixmap, QBitmap
-            from PySide6.QtCore import QRect
+
 
             qt_image = ImageQt(processed_image)
             pixmap = QPixmap.fromImage(qt_image)
@@ -1982,14 +1980,13 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             print(f"绘制圆形图片失败: {e}")
-            import traceback
+
             traceback.print_exc()
 
     def _configure_printer_for_consistency(self, printer):
         """配置打印机设置，确保与排版预览一致"""
         try:
-            from PySide6.QtGui import QPageLayout
-            from PySide6.QtCore import QMarginsF
+
 
             print("配置打印机设置...")
 
