@@ -45,26 +45,9 @@ jobs:
 
     - name: Install UPX for compression
       run: |
-        echo "=== 安装UPX压缩工具 ==="
-        # 下载UPX
-        $upxVersion = "4.2.2"
-        $upxUrl = "https://github.com/upx/upx/releases/download/v$upxVersion/upx-$upxVersion-win64.zip"
-        $upxZip = "upx.zip"
-
-        Invoke-WebRequest -Uri $upxUrl -OutFile $upxZip
-        Expand-Archive -Path $upxZip -DestinationPath "upx-temp"
-
-        # 移动UPX到系统路径
-        $upxDir = Get-ChildItem "upx-temp" -Directory | Select-Object -First 1
-        Copy-Item "$($upxDir.FullName)\upx.exe" "C:\Windows\System32\"
-
-        # 验证安装
+        # 使用Chocolatey安装UPX (更简单可靠)
+        choco install upx -y
         upx --version
-        echo "✅ UPX安装完成"
-
-        # 清理临时文件
-        Remove-Item $upxZip -Force
-        Remove-Item "upx-temp" -Recurse -Force
         
     - name: 验证项目结构
       run: |
