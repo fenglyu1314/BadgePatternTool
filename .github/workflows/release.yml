@@ -28,11 +28,11 @@ jobs:
     - name: Verify project structure
       run: |
         echo "=== 项目结构检查 ==="
-        ls -la
+        Get-ChildItem -Force
         echo "=== src目录 ==="
-        ls -la src/
+        Get-ChildItem src/ -Force
         echo "=== assets目录 ==="
-        ls -la src/assets/ || echo "assets目录不存在"
+        if (Test-Path "src/assets") { Get-ChildItem src/assets/ -Force } else { echo "assets目录不存在" }
         
     - name: Run tests
       run: |
@@ -47,7 +47,7 @@ jobs:
     - name: Verify build output
       run: |
         echo "=== 构建结果检查 ==="
-        ls -la dist/
+        Get-ChildItem dist/ -Force
         if (Test-Path "dist/BadgePatternTool.exe") {
           $size = (Get-Item "dist/BadgePatternTool.exe").Length / 1MB
           echo "✅ 可执行文件大小: $([math]::Round($size, 1)) MB"
@@ -79,9 +79,9 @@ jobs:
         Compress-Archive -Path "release/*" -DestinationPath $zipName
         
         echo "=== 发布包内容 ==="
-        ls -la release/
+        Get-ChildItem release/ -Force
         echo "=== ZIP文件 ==="
-        ls -la *.zip
+        Get-ChildItem *.zip -Force
         
         # 设置环境变量供后续步骤使用
         echo "ZIP_NAME=$zipName" >> $env:GITHUB_ENV

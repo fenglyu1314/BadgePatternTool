@@ -28,11 +28,11 @@ jobs:
     - name: Verify project structure
       run: |
         echo "=== 项目结构检查 ==="
-        ls -la
+        Get-ChildItem -Force
         echo "=== src目录 ==="
-        ls -la src/
+        Get-ChildItem src/ -Force
         echo "=== assets目录 ==="
-        ls -la src/assets/ || echo "assets目录不存在"
+        if (Test-Path "src/assets") { Get-ChildItem src/assets/ -Force } else { echo "assets目录不存在" }
 
     - name: Run code quality checks
       run: |
