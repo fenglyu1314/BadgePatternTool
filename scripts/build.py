@@ -105,8 +105,8 @@ def build_executable():
         return False
 
 def copy_resources():
-    """复制资源文件"""
-    print("Copying resource files...")
+    """复制用户必需的资源文件"""
+    print("Copying essential user files...")
 
     project_root = Path(__file__).parent.parent
     dist_dir = project_root / "dist"
@@ -115,26 +115,20 @@ def copy_resources():
         print("dist directory does not exist")
         return False
 
-    # 复制文档
-    docs_to_copy = [
-        "README.md",
-        "CHANGELOG.md",
-        "requirements.txt"
+    # 只复制用户必需的文档
+    essential_docs = [
+        "README.md"  # 只保留基本说明文档
     ]
 
-    for doc in docs_to_copy:
+    for doc in essential_docs:
         src_path = project_root / doc
         if src_path.exists():
             dst_path = dist_dir / doc
             shutil.copy2(src_path, dst_path)
             print(f"  Copied: {doc}")
 
-    # 复制docs目录
-    docs_dir = project_root / "docs"
-    if docs_dir.exists():
-        dst_docs = dist_dir / "docs"
-        shutil.copytree(docs_dir, dst_docs, dirs_exist_ok=True)
-        print("  Copied: docs/")
+    # 不复制开发文档目录，用户不需要
+    print("  Skipped: Development documentation (not needed for end users)")
 
     return True
 
@@ -167,8 +161,8 @@ def optimize_executable():
         return False
 
 def create_installer_info():
-    """创建安装说明"""
-    print("Creating installation instructions...")
+    """创建简化的使用说明"""
+    print("Creating user guide...")
 
     project_root = Path(__file__).parent.parent
     dist_dir = project_root / "dist"
@@ -179,52 +173,44 @@ def create_installer_info():
     if exe_path.exists():
         file_size_mb = exe_path.stat().st_size / (1024 * 1024)
 
-    install_info = f"""# BadgePatternTool Installation Guide
+    install_info = f"""# 徽章图案工具 使用说明
 
-## Quick Start
+## 快速开始
 
-1. **Run the Program**
-   - Double-click `BadgePatternTool.exe` to start
-   - First run may take a few seconds to load
+1. **运行程序**
+   - 双击 `BadgePatternTool.exe` 启动程序
+   - 首次运行可能需要几秒钟加载时间
 
-2. **System Requirements**
-   - Windows 7/8/10/11 (64-bit)
-   - At least 100MB available disk space
-   - Recommended 4GB memory
+2. **系统要求**
+   - Windows 7/8/10/11 (64位)
+   - 至少100MB可用磁盘空间
+   - 建议4GB内存
 
-3. **Usage Instructions**
-   - Check detailed documentation in `docs/` directory
-   - Refer to `README.md` for feature overview
+3. **基本使用**
+   - 导入图片文件
+   - 调整图片位置和大小
+   - 选择排版布局
+   - 导出或打印结果
 
-## File Description
+## 文件说明
 
-- `BadgePatternTool.exe` - Main program file ({file_size_mb:.1f}MB)
-- `README.md` - Project description
-- `CHANGELOG.md` - Update log
-- `docs/` - Detailed documentation directory
+- `BadgePatternTool.exe` - 主程序文件 ({file_size_mb:.1f}MB)
+- `README.md` - 项目说明
+- `使用说明.txt` - 本文件
 
-## Performance Optimization
+## 问题反馈
 
-This version includes the following optimizations:
-- Removed unnecessary dependency modules
-- Optimized startup speed
-- Reduced file size
-- Improved runtime efficiency
-
-## Issue Feedback
-
-If you encounter problems, please check the documentation or contact the developer.
+如遇到问题，请参考README.md或联系开发者。
 
 ---
-BadgePatternTool v1.5.5 (Optimized)
-Build time: {Path(__file__).stat().st_mtime}
+徽章图案工具 v1.5.5
 """
 
-    info_file = dist_dir / "Installation_Guide.txt"
+    info_file = dist_dir / "使用说明.txt"
     with open(info_file, 'w', encoding='utf-8') as f:
         f.write(install_info)
 
-    print("  Created: Installation_Guide.txt")
+    print("  Created: 使用说明.txt")
 
 def main():
     """主构建函数"""

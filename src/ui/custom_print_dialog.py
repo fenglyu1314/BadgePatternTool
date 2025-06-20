@@ -7,15 +7,12 @@ import sys
 import os
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
-    QSpinBox, QPushButton, QGroupBox, QCheckBox, QRadioButton,
+    QSpinBox, QPushButton, QGroupBox, QRadioButton,
     QWidget, QMessageBox
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap, QPainter, QFont, QPen, QColor
 from PySide6.QtPrintSupport import QPrinter, QPrinterInfo
 
-# 导入主界面的颜色配置
-from utils.config import COLORS
 from common.error_handler import logger
 
 # 添加父目录到路径
@@ -24,21 +21,21 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 class PrintPreviewWidget(QLabel):
     """打印预览组件"""
-    
+
     def __init__(self):
         super().__init__()
         self.setMinimumSize(400, 300)
+        # 只设置背景和边框，让文字颜色跟随系统主题
         self.setStyleSheet("""
             QLabel {
                 background-color: #808080;
                 border: 1px solid #666;
-                color: #ffffff;
-                font-size: 14px;
-                font-weight: bold;
             }
         """)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setObjectName("preview_label")  # 设置对象名称以便样式应用
+        # 设置内容边距，在预览图片周围留出空间
+        self.setContentsMargins(20, 20, 20, 20)
         self.preview_pixmap = None
         
     def set_preview_pixmap(self, pixmap):
@@ -84,134 +81,17 @@ class CustomPrintDialog(QDialog):
         self.load_printers()
 
     def apply_main_window_style(self):
-        """应用与主界面一致的样式"""
-        style = f"""
-            QDialog {{
-                background-color: {COLORS['bg_primary']};
-                color: {COLORS['text']};
-                font-family: "Microsoft YaHei", "SimHei", sans-serif;
-            }}
-            QLabel {{
-                color: {COLORS['text']};
-                font-size: 12px;
-                background-color: transparent;
-            }}
-            QGroupBox {{
-                font-weight: bold;
-                color: {COLORS['text']};
-                border: 1px solid {COLORS['border']};
-                border-radius: 5px;
-                margin-top: 10px;
-                padding-top: 10px;
-                background-color: {COLORS['bg_secondary']};
-            }}
-            QGroupBox::title {{
-                subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 5px 0 5px;
-                color: {COLORS['text']};
-                background-color: {COLORS['bg_primary']};
-            }}
-            QComboBox {{
-                color: {COLORS['text']};
-                background-color: {COLORS['bg_secondary']};
-                border: 1px solid {COLORS['border']};
-                border-radius: 3px;
-                padding: 5px;
-                min-height: 20px;
-            }}
-            QComboBox::drop-down {{
-                border: none;
-                width: 20px;
-            }}
-            QComboBox::down-arrow {{
-                image: none;
-                border-left: 5px solid transparent;
-                border-right: 5px solid transparent;
-                border-top: 5px solid #666;
-                margin-right: 5px;
-            }}
-            QSpinBox {{
-                color: {COLORS['text']};
-                background-color: {COLORS['bg_secondary']};
-                border: 1px solid {COLORS['border']};
-                border-radius: 3px;
-                padding: 3px;
-                min-height: 20px;
-            }}
-            QCheckBox {{
-                color: {COLORS['text']};
-                spacing: 5px;
-            }}
-            QCheckBox::indicator {{
-                width: 16px;
-                height: 16px;
-                border: 1px solid {COLORS['border']};
-                border-radius: 3px;
-                background-color: {COLORS['bg_secondary']};
-            }}
-            QCheckBox::indicator:checked {{
-                background-color: {COLORS['accent']};
-                border-color: {COLORS['accent']};
-            }}
-            QRadioButton {{
-                color: {COLORS['text']};
-                spacing: 5px;
-            }}
-            QRadioButton::indicator {{
-                width: 16px;
-                height: 16px;
-                border: 1px solid {COLORS['border']};
-                border-radius: 8px;
-                background-color: {COLORS['bg_secondary']};
-            }}
-            QRadioButton::indicator:checked {{
-                background-color: {COLORS['accent']};
-                border-color: {COLORS['accent']};
-            }}
-            QPushButton {{
-                color: {COLORS['text']};
-                background-color: {COLORS['bg_secondary']};
-                border: 1px solid {COLORS['border']};
-                border-radius: 3px;
-                padding: 8px 16px;
-                min-height: 24px;
-                font-weight: normal;
-            }}
-            QPushButton:hover {{
-                background-color: #f8f9fa;
-                border-color: {COLORS['accent']};
-            }}
-            QPushButton:pressed {{
-                background-color: #e9ecef;
-            }}
-            /* 打印按钮特殊样式 */
-            QPushButton#print_button {{
-                background-color: {COLORS['success']};
-                color: white;
-                font-weight: bold;
-                border: none;
-            }}
-            QPushButton#print_button:hover {{
-                background-color: #0e6b0e;
-            }}
-            QPushButton#print_button:pressed {{
-                background-color: #0c5a0c;
-            }}
-            /* 预览区域样式 */
-            QLabel#preview_label {{
-                color: #666666;
-                background-color: #f5f5f5;
-                border: 1px solid {COLORS['border']};
-            }}
-        """
-        self.setStyleSheet(style)
+        """完全使用系统默认样式"""
+        # 清除所有样式，让Qt使用系统默认样式
+        self.setStyleSheet("")
         
     def setup_ui(self):
         """设置UI"""
         self.setWindowTitle("打印")
         self.setModal(True)
-        self.resize(900, 650)
+        # 调整窗口大小，让左侧预览区域更接近A4比例
+        # A4比例约1:1.41，考虑右侧控制面板，总宽度设为750
+        self.resize(750, 600)
 
         # 应用与主界面一致的样式
         self.apply_main_window_style()
@@ -228,13 +108,22 @@ class CustomPrintDialog(QDialog):
         # 左侧预览区域
         self.setup_preview_area(content_layout)
 
-        # 右侧控制区域
+        # 右侧控制区域（包含参数和按钮）
         self.setup_control_area(content_layout)
 
         main_layout.addLayout(content_layout)
 
-        # 底部按钮区域
-        self.setup_bottom_buttons(main_layout)
+        # 设置焦点策略，防止回车键意外触发按钮
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+
+    def keyPressEvent(self, event):
+        """处理键盘事件，防止回车键意外触发按钮"""
+        # 如果按下回车键，不做任何处理（忽略）
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+            event.ignore()
+            return
+        # 其他键盘事件正常处理
+        super().keyPressEvent(event)
         
     def setup_preview_area(self, parent_layout):
         """设置预览区域"""
@@ -242,124 +131,71 @@ class CustomPrintDialog(QDialog):
         self.preview_widget = PrintPreviewWidget()
         if self.preview_pixmap:
             self.preview_widget.set_preview_pixmap(self.preview_pixmap)
-        
-        parent_layout.addWidget(self.preview_widget, 2)  # 占2/3空间
+
+        parent_layout.addWidget(self.preview_widget, 3)  # 占3/4空间，更接近A4比例
         
     def setup_control_area(self, parent_layout):
-        """设置控制区域"""
+        """设置控制区域（包含参数和按钮）"""
         control_widget = QWidget()
         control_layout = QVBoxLayout(control_widget)
         control_layout.setSpacing(15)
         control_layout.setContentsMargins(0, 0, 0, 0)
-        
+
         # 打印机选择
         self.setup_printer_selection(control_layout)
-        
+
         # 打印设置
         self.setup_print_settings(control_layout)
-        
-        # 页面设置
-        self.setup_page_settings(control_layout)
-        
+
         # 添加弹性空间
         control_layout.addStretch()
-        
-        parent_layout.addWidget(control_widget, 1)  # 占1/3空间
+
+        # 底部按钮区域
+        self.setup_control_buttons(control_layout)
+
+        parent_layout.addWidget(control_widget, 1)  # 占1/4空间
         
     def setup_printer_selection(self, parent_layout):
         """设置打印机选择"""
-        # 打印机选择标签
+        # 打印机选择标签 - 使用系统默认样式
         printer_label = QLabel("选择打印机")
-        printer_label.setStyleSheet("font-weight: bold; font-size: 12px;")
         parent_layout.addWidget(printer_label)
-        
+
+        # 打印机选择和属性按钮的水平布局
+        printer_layout = QHBoxLayout()
+        printer_layout.setSpacing(8)  # 设置间距
+
         # 打印机下拉框
         self.printer_combo = QComboBox()
-        self.printer_combo.setMinimumHeight(30)
-        parent_layout.addWidget(self.printer_combo)
-        
+        printer_layout.addWidget(self.printer_combo, 1)  # 占用剩余空间
+
         # 属性按钮
-        properties_btn = QPushButton("属性")
-        properties_btn.setMaximumWidth(80)
-        properties_btn.clicked.connect(self.show_printer_properties)
-        parent_layout.addWidget(properties_btn)
+        self.properties_btn = QPushButton("属性")
+        self.properties_btn.setMaximumWidth(60)   # 稍微缩小宽度
+        self.properties_btn.setAutoDefault(False)  # 禁用默认按钮行为
+        self.properties_btn.setDefault(False)      # 禁用默认按钮行为
+        self.properties_btn.clicked.connect(self.show_printer_properties)
+        printer_layout.addWidget(self.properties_btn, 0)  # 固定宽度
+
+        parent_layout.addLayout(printer_layout)
         
     def setup_print_settings(self, parent_layout):
         """设置打印设置"""
         # 份数设置
         copies_layout = QHBoxLayout()
         copies_layout.addWidget(QLabel("份数:"))
-        
+
         self.copies_spinbox = QSpinBox()
         self.copies_spinbox.setRange(1, 999)
         self.copies_spinbox.setValue(1)
-        self.copies_spinbox.setMaximumWidth(80)
+        self.copies_spinbox.setMinimumHeight(30)  # 适中的高度
+        self.copies_spinbox.setMinimumWidth(80)   # 适中的宽度
         copies_layout.addWidget(self.copies_spinbox)
         copies_layout.addStretch()
-        
+
         parent_layout.addLayout(copies_layout)
-        
-        # 页边距设置组
-        margins_group = QGroupBox()
-        margins_layout = QVBoxLayout(margins_group)
-        margins_layout.setSpacing(8)
-        
-        # 页边距输入框
-        margin_inputs = [
-            ("左边距:", "left"),
-            ("上边距:", "top"), 
-            ("右边距:", "right"),
-            ("下边距:", "bottom")
-        ]
-        
-        self.margin_spinboxes = {}
-        for label_text, key in margin_inputs:
-            margin_layout = QHBoxLayout()
-            margin_layout.addWidget(QLabel(label_text))
 
-            spinbox = QSpinBox()
-            spinbox.setRange(5, 50)  # 最小5mm（打印机硬件限制）
-            spinbox.setValue(6)      # 默认6mm（5mm限制+1mm安全余量）
-            spinbox.setSuffix("mm")
-            spinbox.setMaximumWidth(80)
-            # 连接信号以实时更新预览
-            spinbox.valueChanged.connect(self.update_preview_with_settings)
-            self.margin_spinboxes[key] = spinbox
-
-            margin_layout.addWidget(spinbox)
-            margin_layout.addStretch()
-            margins_layout.addLayout(margin_layout)
-            
-        parent_layout.addWidget(margins_group)
-        
-    def setup_page_settings(self, parent_layout):
-        """设置页面设置"""
-        # 缩放比例
-        scale_layout = QHBoxLayout()
-        scale_layout.addWidget(QLabel("缩放比例:"))
-        
-        self.scale_spinbox = QSpinBox()
-        self.scale_spinbox.setRange(10, 500)
-        self.scale_spinbox.setValue(100)
-        self.scale_spinbox.setSuffix("%")
-        self.scale_spinbox.setMaximumWidth(80)
-        # 连接信号以实时更新预览
-        self.scale_spinbox.valueChanged.connect(self.update_preview_with_settings)
-        scale_layout.addWidget(self.scale_spinbox)
-        scale_layout.addStretch()
-
-        parent_layout.addLayout(scale_layout)
-
-        # 选项复选框
-        self.rotate_checkbox = QCheckBox("旋转 90°")
-        self.rotate_checkbox.toggled.connect(self.update_preview_with_settings)
-        parent_layout.addWidget(self.rotate_checkbox)
-
-        self.fit_to_page_checkbox = QCheckBox("缩放以适合纸张")
-        self.fit_to_page_checkbox.toggled.connect(self.update_preview_with_settings)
-        parent_layout.addWidget(self.fit_to_page_checkbox)
-
-        # 彩色/单色打印选项
+        # 打印模式设置
         color_group = QGroupBox("打印模式")
         color_layout = QVBoxLayout(color_group)
 
@@ -372,145 +208,46 @@ class CustomPrintDialog(QDialog):
 
         parent_layout.addWidget(color_group)
 
-        # 连接信号
-        self.fit_to_page_checkbox.toggled.connect(self.on_fit_to_page_changed)
+    def setup_control_buttons(self, parent_layout):
+        """设置控制按钮（在右侧面板）"""
+        # 打印按钮（填满宽度）
+        print_btn = QPushButton("打印")
+        print_btn.setObjectName("print_button")
+        print_btn.setMinimumHeight(40)  # 稍微大一些突出主要操作
+        print_btn.setAutoDefault(False)
+        print_btn.setDefault(False)
 
-    def update_preview_with_settings(self):
-        """根据当前设置更新预览"""
-        try:
-            if not self.preview_pixmap:
-                return
+        # 直接为打印按钮设置绿色样式
+        print_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #107c10;
+                color: white;
+                font-weight: bold;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 3px;
+            }
+            QPushButton:hover {
+                background-color: #0e6b0e;
+            }
+            QPushButton:pressed {
+                background-color: #0c5a0c;
+            }
+        """)
 
-            # 获取当前设置
-            settings = self.get_print_settings()
+        print_btn.clicked.connect(self.start_print)
 
-            # 创建新的预览图片，应用当前设置
-            updated_preview = self.apply_settings_to_preview(self.preview_pixmap, settings)
+        # 添加一些上边距
+        button_layout = QVBoxLayout()
+        button_layout.setContentsMargins(0, 15, 0, 0)
+        button_layout.addWidget(print_btn)
 
-            # 更新预览显示
-            if hasattr(self, 'preview_widget') and updated_preview:
-                self.preview_widget.set_preview_pixmap(updated_preview)
+        parent_layout.addLayout(button_layout)
 
-        except Exception as e:
-            print(f"更新预览失败: {e}")
-
-    def apply_settings_to_preview(self, original_pixmap, settings):
-        """将设置应用到预览图片"""
-        try:
-            if not original_pixmap:
-                return None
-
-            # 创建新的图片副本
-            result_pixmap = QPixmap(original_pixmap.size())
-            result_pixmap.fill(Qt.GlobalColor.white)
-
-            painter = QPainter(result_pixmap)
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-            # 计算变换
-            scale_factor = settings['scale'] / 100.0
-
-            # 应用旋转
-            if settings['rotate']:
-                painter.translate(result_pixmap.width() / 2, result_pixmap.height() / 2)
-                painter.rotate(90)
-                painter.translate(-result_pixmap.height() / 2, -result_pixmap.width() / 2)
-
-            # 应用缩放
-            if settings['fit_to_page']:
-                # 适合纸张模式
-                scaled_pixmap = original_pixmap.scaled(
-                    result_pixmap.size(),
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation
-                )
-            else:
-                # 自定义缩放
-                new_size = original_pixmap.size() * scale_factor
-                scaled_pixmap = original_pixmap.scaled(
-                    new_size,
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation
-                )
-
-            # 计算居中位置
-            x = (result_pixmap.width() - scaled_pixmap.width()) // 2
-            y = (result_pixmap.height() - scaled_pixmap.height()) // 2
-
-            # 绘制图片
-            painter.drawPixmap(x, y, scaled_pixmap)
-
-            # 绘制页边距线
-            self.draw_margin_lines(painter, result_pixmap.size(), settings['margins'])
-
-            painter.end()
-            return result_pixmap
-
-        except Exception as e:
-
-            logger.error(f"应用设置到预览失败: {e}", exc_info=True)
-            return original_pixmap
-
-    def draw_margin_lines(self, painter, pixmap_size, margins):
-        """绘制页边距线"""
-        try:
-
-
-            # 设置页边距线样式
-            painter.setPen(QPen(QColor(200, 100, 100), 2, Qt.PenStyle.DashLine))
-
-            # 计算页边距像素值（假设96 DPI）
-            dpi = 96
-            left_px = int(margins['left'] * dpi / 25.4)
-            top_px = int(margins['top'] * dpi / 25.4)
-            right_px = int(margins['right'] * dpi / 25.4)
-            bottom_px = int(margins['bottom'] * dpi / 25.4)
-
-            # 绘制页边距矩形
-            margin_rect_x = left_px
-            margin_rect_y = top_px
-            margin_rect_width = pixmap_size.width() - left_px - right_px
-            margin_rect_height = pixmap_size.height() - top_px - bottom_px
-
-            if margin_rect_width > 0 and margin_rect_height > 0:
-                painter.drawRect(margin_rect_x, margin_rect_y, margin_rect_width, margin_rect_height)
-
-        except Exception as e:
-            print(f"绘制页边距线失败: {e}")
 
 
         
-    def setup_bottom_buttons(self, parent_layout):
-        """设置底部按钮"""
-        # 按钮布局
-        button_layout = QHBoxLayout()
-        button_layout.setContentsMargins(0, 10, 0, 0)
 
-        # 重置按钮
-        reset_btn = QPushButton("重置")
-        reset_btn.setMinimumHeight(35)
-        reset_btn.clicked.connect(self.reset_settings)
-        button_layout.addWidget(reset_btn)
-
-        button_layout.addStretch()
-
-        # 关闭按钮
-        close_btn = QPushButton("关闭")
-        close_btn.setMinimumHeight(35)
-        close_btn.setMinimumWidth(80)
-        close_btn.clicked.connect(self.reject)
-        button_layout.addWidget(close_btn)
-
-        # 打印按钮
-        print_btn = QPushButton("打印")
-        print_btn.setObjectName("print_button")  # 设置对象名以应用特殊样式
-        print_btn.setMinimumHeight(35)
-        print_btn.setMinimumWidth(80)
-        print_btn.clicked.connect(self.start_print)
-        button_layout.addWidget(print_btn)
-
-        # 将按钮布局添加到父布局
-        parent_layout.addLayout(button_layout)
 
 
 
@@ -553,35 +290,10 @@ class CustomPrintDialog(QDialog):
         return {
             'printer': self.get_selected_printer(),
             'copies': self.copies_spinbox.value(),
-            'margins': {
-                'left': self.margin_spinboxes['left'].value(),
-                'top': self.margin_spinboxes['top'].value(),
-                'right': self.margin_spinboxes['right'].value(),
-                'bottom': self.margin_spinboxes['bottom'].value(),
-            },
-            'scale': self.scale_spinbox.value(),
-            'rotate': self.rotate_checkbox.isChecked(),
-            'fit_to_page': self.fit_to_page_checkbox.isChecked(),
             'color_mode': 'color' if self.color_radio.isChecked() else 'grayscale',
         }
         
-    def on_fit_to_page_changed(self, checked):
-        """适合纸张选项改变"""
-        # 如果选择适合纸张，禁用缩放比例输入
-        self.scale_spinbox.setEnabled(not checked)
-        if checked:
-            self.scale_spinbox.setValue(100)
-            
-    def reset_settings(self):
-        """重置设置"""
-        self.copies_spinbox.setValue(1)
-        for spinbox in self.margin_spinboxes.values():
-            spinbox.setValue(0)
-        self.scale_spinbox.setValue(100)
-        self.rotate_checkbox.setChecked(False)
-        self.fit_to_page_checkbox.setChecked(False)
-        self.color_radio.setChecked(True)  # 默认彩色打印
-        
+
     def show_printer_properties(self):
         """显示打印机属性设置"""
         try:
