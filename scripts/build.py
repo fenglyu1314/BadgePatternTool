@@ -173,44 +173,44 @@ def create_installer_info():
     if exe_path.exists():
         file_size_mb = exe_path.stat().st_size / (1024 * 1024)
 
-    install_info = f"""# 徽章图案工具 使用说明
+    install_info = f"""# BadgePatternTool User Guide
 
-## 快速开始
+## Quick Start
 
-1. **运行程序**
-   - 双击 `BadgePatternTool.exe` 启动程序
-   - 首次运行可能需要几秒钟加载时间
+1. **Run the Program**
+   - Double-click `BadgePatternTool.exe` to start
+   - First run may take a few seconds to load
 
-2. **系统要求**
-   - Windows 7/8/10/11 (64位)
-   - 至少100MB可用磁盘空间
-   - 建议4GB内存
+2. **System Requirements**
+   - Windows 7/8/10/11 (64-bit)
+   - At least 100MB free disk space
+   - Recommended 4GB RAM
 
-3. **基本使用**
-   - 导入图片文件
-   - 调整图片位置和大小
-   - 选择排版布局
-   - 导出或打印结果
+3. **Basic Usage**
+   - Import image files
+   - Adjust image position and size
+   - Select layout mode
+   - Export or print results
 
-## 文件说明
+## File Description
 
-- `BadgePatternTool.exe` - 主程序文件 ({file_size_mb:.1f}MB)
-- `README.md` - 项目说明
-- `使用说明.txt` - 本文件
+- `BadgePatternTool.exe` - Main program file ({file_size_mb:.1f}MB)
+- `README.md` - Project documentation
+- `User_Guide.txt` - This file
 
-## 问题反馈
+## Feedback
 
-如遇到问题，请参考README.md或联系开发者。
+If you encounter any issues, please refer to README.md or contact the developer.
 
 ---
-徽章图案工具 v1.5.5
+BadgePatternTool v1.5.6
 """
 
-    info_file = dist_dir / "使用说明.txt"
+    info_file = dist_dir / "User_Guide.txt"
     with open(info_file, 'w', encoding='utf-8') as f:
         f.write(install_info)
 
-    print("  Created: 使用说明.txt")
+    print("  Created: User_Guide.txt")
 
 def main():
     """主构建函数"""
