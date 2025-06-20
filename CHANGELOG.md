@@ -5,6 +5,16 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)，
 并且本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.5.4] - 2025-06-20
+
+### 修复
+- **🔧 Unicode编码修复**: 修复GitHub Actions中Windows环境下的Unicode编码问题
+  - 添加UTF-8编码声明和环境变量设置
+  - 将所有中文输出替换为英文，避免cp1252编码错误
+  - 修复code_quality_check.py中的空值检查问题
+  - 确保开发工具在Windows CI环境下正常运行
+
+
 ## [1.5.3] - 2025-06-20
 
 ### 修复
