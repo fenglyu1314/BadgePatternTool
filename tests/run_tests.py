@@ -22,7 +22,7 @@ def run_all_tests():
     
     # 发现并运行测试
     loader = unittest.TestLoader()
-    start_dir = Path(__file__).parent
+    start_dir = str(Path(__file__).parent)
     suite = loader.discover(start_dir, pattern='test_*.py')
     
     # 运行测试
@@ -48,14 +48,30 @@ def run_all_tests():
         for test, traceback in result.errors:
             print(f"  - {test}")
     
+    # 计算测试覆盖率
+    if result.testsRun > 0:
+        success_rate = (result.testsRun - len(result.failures) - len(result.errors)) / result.testsRun * 100
+        print(f"\n测试成功率: {success_rate:.1f}%")
+
+        if success_rate >= 90:
+            print("✅ 测试覆盖度良好")
+        elif success_rate >= 70:
+            print("⚠️ 测试覆盖度一般，建议增加测试")
+        else:
+            print("❌ 测试覆盖度不足，需要增加更多测试")
+
     # 返回是否所有测试都通过
     success = len(result.failures) == 0 and len(result.errors) == 0
-    
+
     if success:
         print("\n🎉 所有测试通过！")
+        print("建议运行以下命令进行更全面的测试:")
+        print("  python tests/test_performance.py  # 性能测试")
+        print("  python tests/test_common.py       # 公共模块测试")
+        print("  python tests/test_ui.py           # UI组件测试")
     else:
         print("\n❌ 部分测试失败，请检查上述错误信息。")
-    
+
     return success
 
 def run_specific_test(test_module):

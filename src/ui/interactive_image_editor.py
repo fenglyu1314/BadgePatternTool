@@ -14,6 +14,7 @@ import os
 # 添加父目录到路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.config import app_config
+from common.error_handler import logger, show_error_message, error_handler, resource_manager, ImageProcessingError
 
 
 class InteractiveImageEditor(QLabel):
@@ -35,7 +36,7 @@ class InteractiveImageEditor(QLabel):
         self.image_scale = 1.0  # 图片缩放比例
         self.image_offset = QPoint(0, 0)  # 图片偏移
         self.min_scale = 0.1
-        self.max_scale = 5.0  # 将根据图片大小动态调整
+        self.max_scale = 10.0  # 将根据图片大小动态调整
 
         # 圆形遮罩参数 - 使用配置中的徽章尺寸
         self.update_mask_radius()
@@ -49,6 +50,10 @@ class InteractiveImageEditor(QLabel):
         self._cache_scale = None
         self._cache_size = None
         self._cache_valid = False
+
+        # 性能优化设置
+        self._max_preview_resolution = 1024  # 最大预览分辨率
+        self._cache_tolerance = 0.01  # 缓存容差，减少频繁重建
 
         # 缩放防抖定时器
         from PySide6.QtCore import QTimer
@@ -98,11 +103,18 @@ class InteractiveImageEditor(QLabel):
         # 这个比例用于将实际坐标转换为显示坐标
         self.display_to_actual_ratio = self.mask_radius / actual_radius_px
 
+    @error_handler("加载图片失败", show_error=True, default_return=False)
     def load_image(self, image_path):
         """加载图片（优化：使用预览分辨率提升性能）"""
-        try:
+        if not image_path or not os.path.exists(image_path):
+            raise ImageProcessingError(f"图片文件不存在: {image_path}")
+
+        with resource_manager(None) as _:
             self.image_path = image_path
-            self.original_image = Image.open(image_path)
+
+            # 使用资源管理器安全打开图片
+            with resource_manager(Image.open(image_path)) as img:
+                self.original_image = img.copy()
 
             # 转换为RGB模式
             if self.original_image.mode != 'RGB':
@@ -130,16 +142,8 @@ class InteractiveImageEditor(QLabel):
             # 发送参数改变信号
             self.emit_parameters_changed()
 
+            logger.info(f"成功加载图片: {os.path.basename(image_path)}")
             return True
-
-        except Exception as e:
-            print(f"加载图片失败: {e}")
-            self.original_image = None
-            self.preview_image = None
-            self.image_path = None
-            self._invalidate_cache()
-            self.update()
-            return False
     
     def calculate_initial_scale(self):
         """计算初始缩放比例（使用与CircleEditor相同的最佳缩放逻辑）"""
@@ -224,11 +228,11 @@ class InteractiveImageEditor(QLabel):
 
         # 根据图片大小动态调整最大缩放倍数
         if pixel_count > 16000000:  # 4K+图片
-            self.max_scale = 3.0  # 限制最大缩放，避免性能问题
+            self.max_scale = 6.0  # 增加最大缩放倍数
         elif pixel_count > 8000000:  # 大图片
-            self.max_scale = 4.0
+            self.max_scale = 8.0
         else:
-            self.max_scale = 5.0  # 小图片可以更大缩放
+            self.max_scale = 10.0  # 小图片可以更大缩放
 
     def _invalidate_cache(self):
         """清除图片缓存"""
@@ -250,8 +254,8 @@ class InteractiveImageEditor(QLabel):
         if not self._cache_valid or not self._cached_pixmap:
             return False
 
-        # 检查缩放比例是否改变（增加容差，减少频繁重建）
-        if self._cache_scale is None or abs(self._cache_scale - self.image_scale) > 0.01:
+        # 检查缩放比例是否改变（使用动态容差，减少频繁重建）
+        if self._cache_scale is None or abs(self._cache_scale - self.image_scale) > self._cache_tolerance:
             return False
 
         # 检查图片尺寸是否改变
@@ -308,36 +312,39 @@ class InteractiveImageEditor(QLabel):
         """自定义绘制事件"""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
-        
+
         # 填充背景
         painter.fillRect(self.rect(), QColor(240, 240, 240))
-        
+
         if not self.original_image:
             # 显示提示文字
             painter.setPen(QColor(150, 150, 150))
             painter.drawText(self.rect(), Qt.AlignCenter, "点击加载图片")
             return
-        
+
         # 获取图片和遮罩矩形
         img_rect = self.get_image_rect()
         mask_rect = self.get_mask_rect()
-        
+
         # 创建图片的QPixmap
         img_pixmap = self.create_image_pixmap()
-        
+
         if img_pixmap and not img_pixmap.isNull():
             # 绘制图片
             painter.drawPixmap(img_rect, img_pixmap)
-            
-            # 创建暗化遮罩
-            self.draw_darkening_mask(painter, img_rect, mask_rect)
-        
+
+        # 绘制暗化遮罩（覆盖整个编辑区域，包括空白区域）
+        self.draw_darkening_mask(painter, mask_rect)
+
         # 绘制圆形遮罩边框
         self.draw_mask_border(painter, mask_rect)
-        
+
+        # 绘制安全区圆圈
+        self.draw_safety_circle(painter, mask_rect)
+
         # 绘制中心十字线
         self.draw_center_crosshair(painter)
-        
+
         painter.end()
     
     def create_image_pixmap(self):
@@ -423,39 +430,57 @@ class InteractiveImageEditor(QLabel):
                 del scaled_image
 
         except Exception as e:
-            print(f"创建图片pixmap失败: {e}")
+            logger.error(f"创建图片pixmap失败: {e}", exc_info=True)
             return None
     
-    def draw_darkening_mask(self, painter, img_rect, mask_rect):
-        """绘制暗化遮罩（圆形外部区域变暗）"""
+    def draw_darkening_mask(self, painter, mask_rect):
+        """绘制分层暗化遮罩（圆外区域更深，出血区稍微变暗）"""
         # 保存当前状态
         painter.save()
-        
-        # 设置半透明黑色
-        painter.setBrush(QColor(0, 0, 0, 100))
-        painter.setPen(Qt.NoPen)
-        
-        # 计算图片和遮罩的交集区域
-        intersection = img_rect.intersected(self.rect())
-        
-        if not intersection.isEmpty():
-            # 创建裁剪路径（排除圆形区域）
-            from PySide6.QtGui import QPainterPath, QRegion
-            
-            # 创建整个图片区域的路径
-            full_path = QPainterPath()
-            full_path.addRect(intersection)
-            
-            # 创建圆形路径
-            circle_path = QPainterPath()
-            circle_path.addEllipse(mask_rect)
-            
-            # 从图片区域减去圆形区域
-            darkening_path = full_path.subtracted(circle_path)
-            
-            # 绘制暗化区域
-            painter.fillPath(darkening_path, QColor(0, 0, 0, 100))
-        
+
+        from PySide6.QtGui import QPainterPath
+        from utils.config import app_config
+
+        # 计算安全区域矩形（等于徽章尺寸，不含出血区）
+        total_radius_mm = app_config.badge_diameter_mm / 2  # 总半径（包含出血区）
+        safety_radius_mm = app_config.badge_size_mm / 2     # 安全区半径（等于徽章半径）
+
+        display_radius = mask_rect.width() / 2  # 当前显示的总半径
+        safety_display_radius = display_radius * (safety_radius_mm / total_radius_mm)
+
+        center_x = mask_rect.center().x()
+        center_y = mask_rect.center().y()
+        safety_rect = QRect(
+            int(center_x - safety_display_radius),
+            int(center_y - safety_display_radius),
+            int(safety_display_radius * 2),
+            int(safety_display_radius * 2)
+        )
+
+        # 第一层：圆形外部区域（深色遮罩）
+        outside_alpha = int(255 * app_config.outside_opacity / 100)
+        painter.setBrush(QColor(0, 0, 0, outside_alpha))
+        painter.setPen(Qt.PenStyle.NoPen)
+
+        full_path = QPainterPath()
+        full_path.addRect(self.rect())
+
+        main_circle_path = QPainterPath()
+        main_circle_path.addEllipse(mask_rect)
+
+        outside_path = full_path.subtracted(main_circle_path)
+        painter.fillPath(outside_path, QColor(0, 0, 0, outside_alpha))
+
+        # 第二层：出血区（主圆内但安全区外的区域）
+        bleed_alpha = int(255 * app_config.bleed_opacity / 100)
+        painter.setBrush(QColor(0, 0, 0, bleed_alpha))
+
+        safety_circle_path = QPainterPath()
+        safety_circle_path.addEllipse(safety_rect)
+
+        bleed_area_path = main_circle_path.subtracted(safety_circle_path)
+        painter.fillPath(bleed_area_path, QColor(0, 0, 0, bleed_alpha))
+
         # 恢复状态
         painter.restore()
     
@@ -473,7 +498,42 @@ class InteractiveImageEditor(QLabel):
         painter.drawEllipse(mask_rect)
         
         painter.restore()
-    
+
+    def draw_safety_circle(self, painter, mask_rect):
+        """绘制安全区边框（徽章尺寸，不含出血区）"""
+        painter.save()
+
+        from utils.config import app_config
+
+        # 计算安全区半径（等于徽章尺寸的一半）
+        total_radius_mm = app_config.badge_diameter_mm / 2  # 总半径（包含出血区）
+        safety_radius_mm = app_config.badge_size_mm / 2     # 安全区半径（等于徽章半径）
+
+        # 计算显示比例
+        display_radius = mask_rect.width() / 2  # 当前显示的总半径
+        safety_display_radius = display_radius * (safety_radius_mm / total_radius_mm)
+
+        # 计算安全区圆圈的矩形
+        center_x = mask_rect.center().x()
+        center_y = mask_rect.center().y()
+        safety_rect = QRect(
+            int(center_x - safety_display_radius),
+            int(center_y - safety_display_radius),
+            int(safety_display_radius * 2),
+            int(safety_display_radius * 2)
+        )
+
+        # 设置安全区边框样式（橙色虚线）
+        pen = QPen(QColor(255, 165, 0), 1)  # 橙色
+        pen.setStyle(Qt.PenStyle.DashLine)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+
+        # 绘制安全区圆圈
+        painter.drawEllipse(safety_rect)
+
+        painter.restore()
+
     def draw_center_crosshair(self, painter):
         """绘制中心十字线"""
         painter.save()

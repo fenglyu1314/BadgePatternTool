@@ -10,10 +10,11 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, pyqtSignal
 
-from utils.config import (
-    DEFAULT_LAYOUT, DEFAULT_SPACING, DEFAULT_MARGIN, 
-    DEFAULT_EXPORT_FORMAT, app_config
+from common.constants import (
+    DEFAULT_LAYOUT, DEFAULT_SPACING_MM, DEFAULT_MARGIN_MM,
+    DEFAULT_EXPORT_FORMAT
 )
+from utils.config import app_config
 
 
 class ControlPanel(QGroupBox):
@@ -33,8 +34,8 @@ class ControlPanel(QGroupBox):
         
         # 初始化状态
         self.layout_mode = DEFAULT_LAYOUT
-        self.spacing_value = DEFAULT_SPACING
-        self.margin_value = DEFAULT_MARGIN
+        self.spacing_value = DEFAULT_SPACING_MM
+        self.margin_value = DEFAULT_MARGIN_MM
         self.export_format = DEFAULT_EXPORT_FORMAT.lower()
         
         self.setup_ui()

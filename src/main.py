@@ -4,12 +4,11 @@ BadgePatternTool 主程序入口
 """
 
 import sys
-import os
-from PySide6.QtWidgets import QApplication, QMessageBox
-from PySide6.QtGui import QIcon
 
-# 添加src目录到Python路径
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# 导入公共模块（自动设置路径）
+from common.path_utils import get_icon_path
+from common.imports import QApplication, QMessageBox, QIcon, check_required_dependencies
+from common.error_handler import show_error_message, logger
 
 from utils.config import APP_NAME, APP_VERSION
 from ui.main_window import MainWindow
@@ -17,24 +16,28 @@ from ui.main_window import MainWindow
 def main():
     """主程序入口"""
     try:
+        # 检查必需的依赖
+        check_required_dependencies()
+
         # 创建应用程序
         app = QApplication(sys.argv)
         app.setApplicationName(APP_NAME)
         app.setApplicationVersion(APP_VERSION)
 
-        # 设置应用程序图标（用于任务栏）
+        # 设置应用程序图标（用于任务栏和窗口）
         try:
-            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "icon.ico")
-            if os.path.exists(icon_path):
-                icon = QIcon(icon_path)
+            icon_path = get_icon_path("icon.ico")
+            if icon_path.exists():
+                icon = QIcon(str(icon_path))
                 if not icon.isNull():
                     app.setWindowIcon(icon)
+                    logger.info(f"应用程序图标加载成功: {icon_path.name}")
                 else:
-                    print(f"警告: 图标文件无效 {icon_path}")
+                    logger.warning("图标文件无效")
             else:
-                print(f"警告: 找不到应用程序图标文件 {icon_path}")
+                logger.warning("未找到应用程序图标文件")
         except Exception as e:
-            print(f"设置应用程序图标失败: {e}")
+            logger.error(f"设置应用程序图标失败: {e}")
 
         # 设置应用程序属性（PySide6中这些属性已默认启用）
         # app.setAttribute(Qt.AA_EnableHighDpiScaling, True)  # 已弃用
@@ -52,7 +55,8 @@ def main():
         if not QApplication.instance():
             QApplication(sys.argv)
 
-        QMessageBox.critical(None, "错误", f"程序启动失败：{str(e)}")
+        show_error_message("启动错误", f"程序启动失败：{str(e)}")
+        logger.error(f"程序启动失败: {e}", exc_info=True)
         sys.exit(1)
 
 if __name__ == "__main__":

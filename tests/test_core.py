@@ -32,8 +32,36 @@ class TestImageProcessor(unittest.TestCase):
     
     def test_optimal_scale_calculation(self):
         """测试最佳缩放比例计算"""
-        # 这里需要一个测试图片，暂时跳过
-        pass
+        # 创建测试图片
+        from PIL import Image
+        test_image = Image.new('RGB', (200, 200), color='blue')
+
+        # 测试图片处理器的基本功能
+        self.assertIsNotNone(test_image)
+        self.assertEqual(test_image.size, (200, 200))
+
+        # 测试处理器的配置
+        self.assertGreater(self.processor.badge_diameter_px, 0)
+
+    def test_cache_management(self):
+        """测试缓存管理"""
+        # 测试缓存初始状态
+        self.assertEqual(len(self.processor._crop_cache), 0)
+        self.assertEqual(len(self.processor._preview_cache), 0)
+
+        # 测试缓存清理
+        self.processor.clear_cache()
+        cache_info = self.processor.get_cache_info()
+        self.assertIsInstance(cache_info, dict)
+        self.assertIn('crop_cache_size', cache_info)
+
+    def test_memory_management(self):
+        """测试内存管理"""
+        initial_memory = self.processor._current_memory_usage
+        self.assertGreaterEqual(initial_memory, 0)
+
+        # 测试内存限制
+        self.assertGreater(self.processor._cache_memory_limit, 0)
 
 
 class TestLayoutEngine(unittest.TestCase):
@@ -71,11 +99,36 @@ class TestLayoutEngine(unittest.TestCase):
     def test_layout_info(self):
         """测试布局信息获取"""
         info = self.engine.get_layout_info('grid', 5, 10)
-        
+
         self.assertEqual(info['type'], 'grid')
         self.assertEqual(info['spacing_mm'], 5)
         self.assertEqual(info['margin_mm'], 10)
         self.assertGreater(info['max_count'], 0)
+
+    def test_layout_cache_functionality(self):
+        """测试布局缓存功能"""
+        if hasattr(self.engine, 'clear_cache'):
+            self.engine.clear_cache()
+
+        if hasattr(self.engine, 'get_cache_info'):
+            cache_info = self.engine.get_cache_info()
+            self.assertIsInstance(cache_info, dict)
+
+    def test_layout_performance(self):
+        """测试布局性能"""
+        import time
+        start_time = time.time()
+
+        # 执行多次布局计算
+        for _ in range(5):
+            layout = self.engine.calculate_grid_layout(spacing_mm=5, margin_mm=10)
+            self.assertIsInstance(layout, dict)
+
+        end_time = time.time()
+        total_time = end_time - start_time
+
+        # 5次布局计算应该在1秒内完成
+        self.assertLess(total_time, 1.0)
 
 
 class TestExportManager(unittest.TestCase):

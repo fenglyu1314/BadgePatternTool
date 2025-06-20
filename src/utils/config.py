@@ -1,69 +1,113 @@
 """
 配置管理模块
-管理应用程序的配置参数和常量
+管理应用程序的动态配置参数
 """
 
-# 应用程序基本信息
-APP_NAME = "BadgePatternTool"
-APP_VERSION = "1.3.0"
-APP_TITLE = "徽章图案工具"
-
-# 尺寸配置（单位：mm）
-DEFAULT_BADGE_DIAMETER_MM = 68  # 默认徽章直径
-A4_WIDTH_MM = 210      # A4纸宽度
-A4_HEIGHT_MM = 297     # A4纸高度
-
-# 布局配置（根据打印机测试结果调整）
-DEFAULT_SPACING_MM = 3     # 默认间距：3mm
-DEFAULT_MARGIN_MM = 6      # 默认页边距：6mm（基于5mm打印机限制+1mm安全余量）
-MIN_MARGIN_MM = 5          # 最小页边距：5mm（打印机硬件限制）
-MAX_MARGIN_MM = 30         # 最大页边距：30mm
-
-# DPI配置
-PRINT_DPI = 300        # 打印分辨率
-SCREEN_DPI = 96        # 屏幕显示分辨率
-
-# 像素尺寸计算（基于300DPI）
-def mm_to_pixels(mm, dpi=PRINT_DPI):
-    """将毫米转换为像素"""
-    return int(mm * dpi / 25.4)
-
-# 固定尺寸
-A4_WIDTH_PX = mm_to_pixels(A4_WIDTH_MM)             # A4宽度像素
-A4_HEIGHT_PX = mm_to_pixels(A4_HEIGHT_MM)           # A4高度像素
+# 导入常量
+from common.constants import *
+from common.error_handler import logger
 
 # 动态配置管理类
 class AppConfig:
     """应用程序配置管理"""
 
     def __init__(self):
-        self._badge_diameter_mm = DEFAULT_BADGE_DIAMETER_MM
+        # 徽章尺寸配置
+        self._badge_size_mm = DEFAULT_BADGE_SIZE_MM
+        self._bleed_size_mm = DEFAULT_BLEED_SIZE_MM
+
+        # 遮罩透明度配置
+        self._outside_opacity = DEFAULT_OUTSIDE_OPACITY
+        self._bleed_opacity = DEFAULT_BLEED_OPACITY
+
         self._listeners = []  # 配置变化监听器
 
     @property
-    def badge_diameter_mm(self):
+    def badge_size_mm(self):
         """徽章直径（毫米）"""
-        return self._badge_diameter_mm
+        return self._badge_size_mm
+
+    @badge_size_mm.setter
+    def badge_size_mm(self, value):
+        """设置徽章直径"""
+        value = max(10, min(100, value))  # 支持到100mm
+        if value != self._badge_size_mm:
+            old_value = self._badge_size_mm
+            self._badge_size_mm = value
+            self._notify_listeners('badge_size_mm', old_value, value)
+
+    @property
+    def bleed_size_mm(self):
+        """出血半径（毫米）"""
+        return self._bleed_size_mm
+
+    @bleed_size_mm.setter
+    def bleed_size_mm(self, value):
+        """设置出血半径"""
+        value = max(0, min(10, value))  # 出血半径最大10mm
+        if value != self._bleed_size_mm:
+            old_value = self._bleed_size_mm
+            self._bleed_size_mm = value
+            self._notify_listeners('bleed_size_mm', old_value, value)
+
+    @property
+    def badge_diameter_mm(self):
+        """总直径（徽章直径 + 出血半径×2）"""
+        return self._badge_size_mm + self._bleed_size_mm * 2
 
     @badge_diameter_mm.setter
     def badge_diameter_mm(self, value):
-        """设置徽章直径"""
-        # 限制范围10-100mm
-        value = max(10, min(100, value))
-        if value != self._badge_diameter_mm:
-            old_value = self._badge_diameter_mm
-            self._badge_diameter_mm = value
-            self._notify_listeners('badge_diameter_mm', old_value, value)
+        """设置总直径（保持出血半径不变，调整徽章直径）"""
+        new_badge_size = value - self._bleed_size_mm * 2
+        self.badge_size_mm = new_badge_size
+
+    @property
+    def outside_opacity(self):
+        """圆形外部区域不透明度（%）"""
+        return self._outside_opacity
+
+    @outside_opacity.setter
+    def outside_opacity(self, value):
+        """设置圆形外部区域不透明度"""
+        value = max(0, min(100, value))
+        if value != self._outside_opacity:
+            old_value = self._outside_opacity
+            self._outside_opacity = value
+            self._notify_listeners('outside_opacity', old_value, value)
+
+    @property
+    def bleed_opacity(self):
+        """出血区不透明度（%）"""
+        return self._bleed_opacity
+
+    @bleed_opacity.setter
+    def bleed_opacity(self, value):
+        """设置出血区不透明度"""
+        value = max(0, min(100, value))
+        if value != self._bleed_opacity:
+            old_value = self._bleed_opacity
+            self._bleed_opacity = value
+            self._notify_listeners('bleed_opacity', old_value, value)
 
     @property
     def badge_diameter_px(self):
-        """徽章直径（像素）"""
-        return mm_to_pixels(self._badge_diameter_mm)
+        """总直径（像素）"""
+        return mm_to_pixels(self.badge_diameter_mm)
 
     @property
     def badge_radius_px(self):
-        """徽章半径（像素）"""
+        """总半径（像素）"""
         return self.badge_diameter_px // 2
+
+    @property
+    def badge_size_px(self):
+        """徽章尺寸（像素）"""
+        return mm_to_pixels(self._badge_size_mm)
+
+    @property
+    def bleed_size_px(self):
+        """出血区尺寸（像素）"""
+        return mm_to_pixels(self._bleed_size_mm)
 
     def add_listener(self, callback):
         """添加配置变化监听器"""
@@ -80,53 +124,20 @@ class AppConfig:
             try:
                 callback(key, old_value, new_value)
             except Exception as e:
-                print(f"配置监听器错误: {e}")
+                logger.error(f"配置监听器错误: {e}", exc_info=True)
 
 # 全局配置实例
 app_config = AppConfig()
 
-# 向后兼容的常量
+# 向后兼容的常量（动态获取）
+def get_badge_diameter_mm():
+    """获取当前徽章直径（毫米）"""
+    return app_config.badge_diameter_mm
+
+def get_badge_diameter_px():
+    """获取当前徽章直径（像素）"""
+    return app_config.badge_diameter_px
+
+# 为了向后兼容，保留常量形式（但这些值是动态的）
 BADGE_DIAMETER_MM = app_config.badge_diameter_mm
 BADGE_DIAMETER_PX = app_config.badge_diameter_px
-
-# 界面配置
-WINDOW_WIDTH = 1420    # 主窗口宽度（调整以适应列宽）
-WINDOW_HEIGHT = 800    # 主窗口高度
-THUMBNAIL_SIZE = 100   # 缩略图大小
-
-# 文件格式配置
-SUPPORTED_IMAGE_FORMATS = [
-    ("图片文件", "*.jpg *.jpeg *.png *.bmp *.gif *.tiff"),
-    ("JPEG文件", "*.jpg *.jpeg"),
-    ("PNG文件", "*.png"),
-    ("所有文件", "*.*")
-]
-
-EXPORT_FORMATS = [
-    ("PDF文件", "*.pdf"),
-    ("PNG文件", "*.png"),
-    ("JPEG文件", "*.jpg")
-]
-
-# 默认设置（根据打印机测试结果更新）
-DEFAULT_SPACING = DEFAULT_SPACING_MM  # 默认间距：3mm
-DEFAULT_MARGIN = DEFAULT_MARGIN_MM    # 默认页边距：6mm（基于5mm打印机限制+1mm安全余量）
-DEFAULT_LAYOUT = "compact"            # 默认布局模式：grid（网格）或 compact（紧密）
-DEFAULT_EXPORT_FORMAT = "PNG"        # 默认导出格式
-
-# 颜色配置
-COLORS = {
-    'bg_primary': '#f0f0f0',      # 主背景色
-    'bg_secondary': '#ffffff',     # 次背景色
-    'border': '#cccccc',          # 边框色
-    'text': '#333333',            # 文字色
-    'accent': '#0078d4',          # 强调色
-    'success': '#107c10',         # 成功色
-    'warning': '#ff8c00',         # 警告色
-    'error': '#d13438'            # 错误色
-}
-
-# 性能配置
-MAX_IMAGE_COUNT = 50      # 最大图片数量
-MAX_IMAGE_SIZE_MB = 10    # 单张图片最大大小（MB）
-PREVIEW_UPDATE_DELAY = 100 # 预览更新延迟（毫秒）

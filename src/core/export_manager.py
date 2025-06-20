@@ -14,14 +14,14 @@ from reportlab.lib.pagesizes import A4
 
 # 添加父目录到路径
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.config import DEFAULT_SPACING, DEFAULT_MARGIN, PRINT_DPI
+from common.constants import DEFAULT_SPACING_MM, DEFAULT_MARGIN_MM, PRINT_DPI
 
 @dataclass
 class ExportConfig:
     """导出配置类"""
     layout_type: str = 'grid'
-    spacing_mm: float = DEFAULT_SPACING
-    margin_mm: float = DEFAULT_MARGIN
+    spacing_mm: float = DEFAULT_SPACING_MM
+    margin_mm: float = DEFAULT_MARGIN_MM
     format_type: str = 'PNG'
 from core.layout_engine import LayoutEngine
 from core.image_processor import ImageProcessor
@@ -34,7 +34,7 @@ class ExportManager:
         self.image_processor = ImageProcessor()
         
     def export_to_pdf(self, image_items, output_path, layout_type='grid',
-                     spacing_mm=DEFAULT_SPACING, margin_mm=DEFAULT_MARGIN):
+                     spacing_mm=DEFAULT_SPACING_MM, margin_mm=DEFAULT_MARGIN_MM):
         """
         导出为PDF文件（自动支持多页面）
         参数:
@@ -65,8 +65,8 @@ class ExportManager:
             # 兼容旧接口
             export_config = ExportConfig(
                 layout_type=kwargs.get('layout_type', 'grid'),
-                spacing_mm=kwargs.get('spacing_mm', DEFAULT_SPACING),
-                margin_mm=kwargs.get('margin_mm', DEFAULT_MARGIN),
+                spacing_mm=kwargs.get('spacing_mm', DEFAULT_SPACING_MM),
+                margin_mm=kwargs.get('margin_mm', DEFAULT_MARGIN_MM),
                 format_type=kwargs.get('format_type', 'PNG')
             )
 
@@ -162,7 +162,7 @@ class ExportManager:
         return True, ""
 
     def export_multi_page_to_pdf(self, image_items, output_path, layout_type='grid',
-                                spacing_mm=DEFAULT_SPACING, margin_mm=DEFAULT_MARGIN):
+                                spacing_mm=DEFAULT_SPACING_MM, margin_mm=DEFAULT_MARGIN_MM):
         """
         导出多页面PDF文件
         参数:
@@ -259,7 +259,7 @@ class ExportManager:
             return False, 0
 
     def export_multi_page_to_images(self, image_items, output_path, format_type='PNG',
-                                   layout_type='grid', spacing_mm=DEFAULT_SPACING, margin_mm=DEFAULT_MARGIN):
+                                   layout_type='grid', spacing_mm=DEFAULT_SPACING_MM, margin_mm=DEFAULT_MARGIN_MM):
         """
         导出多页面图片文件
         参数:

@@ -59,7 +59,7 @@ class EditControlsPanel(QWidget):
         parent_layout.addWidget(self.scale_label)
         
         self.scale_slider = QSlider(Qt.Horizontal)
-        self.scale_slider.setRange(10, 500)  # 0.1x 到 5.0x
+        self.scale_slider.setRange(10, 1000)  # 0.1x 到 10.0x
         self.scale_slider.setValue(100)  # 1.0x
         parent_layout.addWidget(self.scale_slider)
     

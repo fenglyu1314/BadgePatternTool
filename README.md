@@ -85,7 +85,9 @@ BadgePatternTool/
 │   ├── main.py              # 主程序入口
 │   ├── ui/                  # 界面模块
 │   │   ├── main_window.py   # 主窗口
-│   │   └── interactive_preview_label.py # 交互预览组件
+│   │   ├── interactive_preview_label.py # 交互预览组件
+│   │   ├── interactive_image_editor.py  # 图片编辑器
+│   │   └── custom_print_dialog.py       # 自定义打印对话框
 │   ├── core/                # 核心业务逻辑
 │   │   ├── image_processor.py # 图片处理
 │   │   ├── layout_engine.py   # 排版引擎
@@ -93,11 +95,16 @@ BadgePatternTool/
 │   ├── utils/               # 工具函数
 │   │   ├── config.py        # 配置管理
 │   │   └── file_handler.py  # 文件处理
+│   ├── common/              # 公共模块
+│   │   ├── imports.py       # 统一导入管理
+│   │   ├── constants.py     # 常量定义
+│   │   ├── path_utils.py    # 路径工具
+│   │   └── error_handler.py # 错误处理
 │   └── assets/              # 资源文件
 ├── docs/                    # 项目文档
 │   ├── 需求文档.md          # 详细需求文档
-│   ├── 测试文档.md          # 功能测试指南
 │   ├── 打印功能使用指南.md  # 打印功能说明
+│   ├── 新功能使用指南.md    # 新功能说明
 │   └── Git使用指南.md       # 版本控制指南
 ├── tests/                   # 测试模块
 │   ├── __init__.py         # 测试包初始化
@@ -108,15 +115,17 @@ BadgePatternTool/
 ├── scripts/                 # 开发脚本
 │   ├── dev_tools.py        # 开发工具
 │   ├── build.py            # 构建脚本
-│   └── check_code_quality.py # 代码质量检查
-├── requirements.txt         # 依赖列表
+│   └── code_quality_check.py # 代码质量检查
+├── requirements.txt         # 核心依赖列表
+├── requirements-dev.txt     # 开发依赖列表
+├── BadgePatternTool.spec    # PyInstaller配置
 ├── CHANGELOG.md            # 更新日志
 └── README.md               # 项目说明
 ```
 
 ## 📋 开发状态
 
-当前版本: v1.2.0 (功能增强版)
+当前版本: v1.3.0 (性能优化版)
 
 ### ✅ 已完成功能
 - [x] **现代化GUI**: 基于PySide6的专业界面设计
@@ -141,13 +150,15 @@ BadgePatternTool/
 - **GUI框架**: PySide6 (Qt6) - 现代化跨平台界面
 - **图像处理**: Pillow (PIL) - 专业图像处理库
 - **PDF生成**: ReportLab - 高质量PDF输出
-- **数学计算**: NumPy - 高效数值计算
+- **构建工具**: PyInstaller - 可执行文件打包
 
 ### 设计特点
 - **模块化架构**: 清晰的代码结构，易于维护和扩展
 - **MVC模式**: 分离界面、逻辑和数据层
+- **智能缓存**: 多层级缓存系统，显著提升性能
 - **错误处理**: 完善的异常处理和用户反馈
-- **性能优化**: 高效的图像处理和内存管理
+- **内存优化**: 高效的图像处理和资源管理
+- **防抖机制**: 流畅的用户交互体验
 
 ## 🛠️ 开发工具
 

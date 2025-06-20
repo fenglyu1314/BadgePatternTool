@@ -446,7 +446,8 @@ class CustomPrintDialog(QDialog):
             return result_pixmap
 
         except Exception as e:
-            print(f"应用设置到预览失败: {e}")
+            from common.error_handler import logger
+            logger.error(f"应用设置到预览失败: {e}", exc_info=True)
             return original_pixmap
 
     def draw_margin_lines(self, painter, pixmap_size, margins):
@@ -613,7 +614,8 @@ class CustomPrintDialog(QDialog):
                     self._show_qt_printer_properties(printer_info)
 
             except Exception as subprocess_error:
-                print(f"Windows API调用失败: {subprocess_error}")
+                from common.error_handler import logger
+                logger.warning(f"Windows API调用失败: {subprocess_error}")
                 # 如果Windows API失败，尝试使用Qt的打印机属性对话框
                 self._show_qt_printer_properties(printer_info)
 
@@ -642,7 +644,8 @@ class CustomPrintDialog(QDialog):
                 print(f"打印机属性设置已更新: {printer_info.printerName()}")
 
         except Exception as e:
-            print(f"Qt打印机属性对话框失败: {e}")
+            from common.error_handler import logger
+            logger.error(f"Qt打印机属性对话框失败: {e}", exc_info=True)
             # 最后的备选方案：显示手动指导
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.information(

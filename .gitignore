@@ -125,10 +125,12 @@ dmypy.json
 # 项目特定文件
 output/
 exports/
-*.pdf
-*.png
-*.jpg
-*.jpeg
-*.gif
-*.bmp
-*.tiff
+# 只忽略输出目录中的图片文件，保留项目资源文件
+output/*.pdf
+output/*.png
+output/*.jpg
+output/*.jpeg
+exports/*.pdf
+exports/*.png
+exports/*.jpg
+exports/*.jpeg

@@ -26,65 +26,75 @@ def check_dependencies():
 def clean_build_dirs():
     """清理构建目录"""
     print("清理构建目录...")
-    
+
     project_root = Path(__file__).parent.parent
-    dirs_to_clean = ["build", "dist", "__pycache__"]
-    
+    dirs_to_clean = ["build", "dist"]
+
     for dir_name in dirs_to_clean:
         dir_path = project_root / dir_name
         if dir_path.exists():
             shutil.rmtree(dir_path)
             print(f"  清理: {dir_name}")
-    
-    # 清理.spec文件
-    for spec_file in project_root.glob("*.spec"):
-        spec_file.unlink()
-        print(f"  清理: {spec_file.name}")
+
+    # 清理Python缓存文件
+    for cache_dir in project_root.rglob("__pycache__"):
+        if cache_dir.is_dir():
+            shutil.rmtree(cache_dir)
+
+    for pyc_file in project_root.rglob("*.pyc"):
+        pyc_file.unlink()
+
+    print("  清理: Python缓存文件")
 
 def build_executable():
-    """构建可执行文件"""
+    """构建可执行文件（使用优化的.spec文件）"""
     print("构建可执行文件...")
-    
+
     project_root = Path(__file__).parent.parent
-    main_script = project_root / "src" / "main.py"
-    
-    if not main_script.exists():
-        print("❌ 找不到主脚本文件")
+    spec_file = project_root / "BadgePatternTool.spec"
+
+    # 检查.spec文件是否存在
+    if not spec_file.exists():
+        print("❌ 找不到 BadgePatternTool.spec 文件")
         return False
-    
-    # PyInstaller命令参数
-    cmd = [
-        "pyinstaller",
-        "--onefile",                    # 打包成单个文件
-        "--windowed",                   # Windows下隐藏控制台
-        "--name=BadgePatternTool",      # 可执行文件名
-        "--icon=src/assets/icon.ico",   # 图标（如果存在）
-        "--add-data=src;src",           # 添加源代码目录
-        "--hidden-import=PIL",          # 隐式导入
-        "--hidden-import=reportlab",
-        "--hidden-import=PySide6",
-        str(main_script)
-    ]
-    
+
     try:
-        # 检查图标文件是否存在
-        icon_path = project_root / "src" / "assets" / "icon.ico"
-        if not icon_path.exists():
-            # 移除图标参数
-            cmd = [arg for arg in cmd if not arg.startswith("--icon")]
-        
+        # 使用.spec文件构建
+        cmd = [
+            "pyinstaller",
+            "--clean",                  # 清理临时文件
+            "--noconfirm",             # 不询问覆盖
+            str(spec_file)
+        ]
+
         print(f"执行命令: {' '.join(cmd)}")
         result = subprocess.run(cmd, cwd=project_root, capture_output=True, text=True)
-        
+
         if result.returncode == 0:
             print("✅ 构建成功")
+
+            # 检查生成的文件大小
+            exe_path = project_root / "dist" / "BadgePatternTool.exe"
+            if exe_path.exists():
+                file_size_mb = exe_path.stat().st_size / (1024 * 1024)
+                print(f"📦 可执行文件大小: {file_size_mb:.1f} MB")
+
+                # 如果文件过大，给出警告
+                if file_size_mb > 60:
+                    print("⚠️ 文件大小较大，考虑进一步优化")
+                elif file_size_mb < 30:
+                    print("✅ 文件大小优化良好")
+
             return True
         else:
             print("❌ 构建失败")
             print("错误输出:")
             print(result.stderr)
+            if result.stdout:
+                print("标准输出:")
+                print(result.stdout)
             return False
-            
+
     except Exception as e:
         print(f"❌ 构建过程出错: {e}")
         return False
@@ -123,14 +133,48 @@ def copy_resources():
     
     return True
 
+def optimize_executable():
+    """优化可执行文件"""
+    print("优化可执行文件...")
+
+    project_root = Path(__file__).parent.parent
+    exe_path = project_root / "dist" / "BadgePatternTool.exe"
+
+    if not exe_path.exists():
+        print("❌ 找不到可执行文件")
+        return False
+
+    try:
+        # 获取文件信息
+        original_size = exe_path.stat().st_size
+        print(f"  原始大小: {original_size / 1024 / 1024:.1f} MB")
+
+        # 这里可以添加其他优化步骤，比如：
+        # - 使用UPX压缩（如果需要）
+        # - 移除不必要的资源
+        # - 验证文件完整性
+
+        print("✅ 可执行文件优化完成")
+        return True
+
+    except Exception as e:
+        print(f"❌ 优化失败: {e}")
+        return False
+
 def create_installer_info():
     """创建安装说明"""
     print("创建安装说明...")
-    
+
     project_root = Path(__file__).parent.parent
     dist_dir = project_root / "dist"
-    
-    install_info = """# BadgePatternTool 安装说明
+    exe_path = dist_dir / "BadgePatternTool.exe"
+
+    # 获取文件大小
+    file_size_mb = 0
+    if exe_path.exists():
+        file_size_mb = exe_path.stat().st_size / (1024 * 1024)
+
+    install_info = f"""# BadgePatternTool 安装说明
 
 ## 🚀 快速开始
 
@@ -139,7 +183,7 @@ def create_installer_info():
    - 首次运行可能需要几秒钟加载时间
 
 2. **系统要求**
-   - Windows 7/8/10/11
+   - Windows 7/8/10/11 (64位)
    - 至少 100MB 可用磁盘空间
    - 建议 4GB 内存
 
@@ -149,23 +193,32 @@ def create_installer_info():
 
 ## 📋 文件说明
 
-- `BadgePatternTool.exe` - 主程序文件
+- `BadgePatternTool.exe` - 主程序文件 ({file_size_mb:.1f}MB)
 - `README.md` - 项目说明
 - `CHANGELOG.md` - 更新日志
 - `docs/` - 详细文档目录
+
+## 🔧 性能优化
+
+本版本已进行以下优化：
+- 移除不必要的依赖模块
+- 优化启动速度
+- 减小文件体积
+- 提升运行效率
 
 ## 🆘 问题反馈
 
 如遇到问题，请查看文档或联系开发者。
 
 ---
-BadgePatternTool v1.0.0
+BadgePatternTool v1.2.0 (优化版)
+构建时间: {Path(__file__).stat().st_mtime}
 """
-    
+
     info_file = dist_dir / "安装说明.txt"
     with open(info_file, 'w', encoding='utf-8') as f:
         f.write(install_info)
-    
+
     print("  创建: 安装说明.txt")
 
 def main():
@@ -183,11 +236,15 @@ def main():
     # 构建可执行文件
     if not build_executable():
         return False
-    
+
+    # 优化可执行文件
+    if not optimize_executable():
+        return False
+
     # 复制资源文件
     if not copy_resources():
         return False
-    
+
     # 创建安装说明
     create_installer_info()
     

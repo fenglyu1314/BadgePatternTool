@@ -3,15 +3,12 @@
 实现圆形裁剪、缩放、移动等图片处理功能
 """
 
-import sys
-import os
 from io import BytesIO
 from dataclasses import dataclass
 
-from PIL import Image, ImageDraw
-
-# 添加父目录到路径
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# 导入公共模块
+from common.imports import PIL_AVAILABLE, PYSIDE6_AVAILABLE, Image, ImageDraw, QPixmap
+from common.error_handler import error_handler, resource_manager, logger, ImageProcessingError
 from utils.config import app_config
 
 @dataclass
@@ -27,12 +24,7 @@ class ImageProcessParams:
         """生成缓存键"""
         return f"{self.image_path}:{self.scale}:{self.offset_x}:{self.offset_y}:{self.rotation}:{extra}"
 
-# PySide6导入（用于预览功能）
-try:
-    from PySide6.QtGui import QPixmap
-    PYSIDE6_AVAILABLE = True
-except ImportError:
-    PYSIDE6_AVAILABLE = False
+
 
 class ImageProcessor:
     """图片处理器类"""
@@ -41,11 +33,16 @@ class ImageProcessor:
         # 图片处理缓存
         self._crop_cache = {}
         self._preview_cache = {}
-        self._max_cache_size = 50  # 最大缓存数量
+        self._max_cache_size = 30  # 减少缓存数量，节省内存
+        self._max_preview_cache_size = 20  # 预览缓存单独限制
 
         # 缓存访问时间记录（用于LRU策略）
         self._cache_access_time = {}
         self._access_counter = 0
+
+        # 内存使用监控
+        self._cache_memory_limit = 100 * 1024 * 1024  # 100MB内存限制
+        self._current_memory_usage = 0
 
     @property
     def badge_diameter_px(self):
@@ -57,26 +54,90 @@ class ImageProcessor:
         """获取当前圆形半径（像素）"""
         return app_config.badge_radius_px
 
-    def _manage_cache(self, cache_dict):
+    def _manage_cache(self, cache_dict, is_preview_cache=False):
         """管理缓存大小，防止内存过度使用（改进的LRU策略）"""
-        if len(cache_dict) > self._max_cache_size:
-            # 找到最少使用的缓存项
-            if self._cache_access_time:
-                # 按访问时间排序，删除最旧的
-                oldest_key = min(self._cache_access_time.keys(),
-                               key=lambda k: self._cache_access_time.get(k, 0))
-                if oldest_key in cache_dict:
-                    del cache_dict[oldest_key]
-                    del self._cache_access_time[oldest_key]
-            else:
-                # 降级到简单策略
+        max_size = self._max_preview_cache_size if is_preview_cache else self._max_cache_size
+
+        # 检查缓存数量限制
+        while len(cache_dict) > max_size:
+            self._remove_oldest_cache_item(cache_dict)
+
+        # 检查内存使用限制（估算）
+        if self._current_memory_usage > self._cache_memory_limit:
+            self._cleanup_memory_intensive_cache(cache_dict)
+
+    def _remove_oldest_cache_item(self, cache_dict):
+        """移除最旧的缓存项"""
+        if self._cache_access_time:
+            # 按访问时间排序，删除最旧的
+            oldest_key = min(self._cache_access_time.keys(),
+                           key=lambda k: self._cache_access_time.get(k, 0))
+            if oldest_key in cache_dict:
+                self._remove_cache_item(cache_dict, oldest_key)
+        else:
+            # 降级到简单策略
+            if cache_dict:
                 oldest_key = next(iter(cache_dict))
-                del cache_dict[oldest_key]
+                self._remove_cache_item(cache_dict, oldest_key)
+
+    def _remove_cache_item(self, cache_dict, key):
+        """安全移除缓存项并释放内存"""
+        try:
+            if key in cache_dict:
+                item = cache_dict[key]
+                # 估算释放的内存
+                if hasattr(item, 'size'):
+                    # PIL Image对象
+                    estimated_size = item.size[0] * item.size[1] * 3  # RGB
+                    self._current_memory_usage -= estimated_size
+                elif hasattr(item, 'width'):
+                    # QPixmap对象
+                    estimated_size = item.width() * item.height() * 4  # RGBA
+                    self._current_memory_usage -= estimated_size
+
+                del cache_dict[key]
+                if key in self._cache_access_time:
+                    del self._cache_access_time[key]
+
+                logger.debug(f"移除缓存项: {key}")
+        except Exception as e:
+            logger.warning(f"移除缓存项失败: {e}")
+
+    def _cleanup_memory_intensive_cache(self, cache_dict):
+        """清理内存密集型缓存"""
+        # 移除一半的缓存项以释放内存
+        items_to_remove = len(cache_dict) // 2
+        for _ in range(items_to_remove):
+            if cache_dict:
+                self._remove_oldest_cache_item(cache_dict)
+            else:
+                break
+        logger.info(f"内存清理完成，当前估算内存使用: {self._current_memory_usage / 1024 / 1024:.1f}MB")
 
     def _update_cache_access(self, cache_key):
         """更新缓存访问时间"""
         self._access_counter += 1
         self._cache_access_time[cache_key] = self._access_counter
+
+    def clear_cache(self):
+        """清空所有缓存，释放内存"""
+        self._crop_cache.clear()
+        self._preview_cache.clear()
+        self._cache_access_time.clear()
+        if hasattr(self, '_mask_cache'):
+            self._mask_cache.clear()
+        self._current_memory_usage = 0
+        self._access_counter = 0
+        logger.info("图片处理缓存已清空")
+
+    def get_cache_info(self):
+        """获取缓存信息"""
+        return {
+            'crop_cache_size': len(self._crop_cache),
+            'preview_cache_size': len(self._preview_cache),
+            'estimated_memory_mb': self._current_memory_usage / 1024 / 1024,
+            'access_counter': self._access_counter
+        }
 
     def _get_cache_key(self, params, extra=""):
         """生成缓存键"""
@@ -87,6 +148,7 @@ class ImageProcessor:
             image_path, scale, offset_x, offset_y, rotation = params
             return f"{image_path}:{scale}:{offset_x}:{offset_y}:{rotation}:{extra}"
 
+    @error_handler("圆形裁剪失败", show_error=False)
     def create_circular_crop(self, image_path=None, scale=1.0, offset_x=0, offset_y=0, rotation=0, params=None):
         """
         创建圆形裁剪（带缓存优化）
@@ -103,6 +165,8 @@ class ImageProcessor:
         if params is not None:
             process_params = params
         else:
+            if image_path is None:
+                raise ImageProcessingError("必须提供image_path或params参数")
             process_params = ImageProcessParams(image_path, scale, offset_x, offset_y, rotation)
 
         # 检查缓存
@@ -136,12 +200,17 @@ class ImageProcessor:
 
                 # 缓存结果
                 self._manage_cache(self._crop_cache)
-                self._crop_cache[cache_key] = circle_img.copy()
+                cached_img = circle_img.copy()
+                self._crop_cache[cache_key] = cached_img
+
+                # 估算内存使用
+                estimated_size = cached_img.size[0] * cached_img.size[1] * 4  # RGBA
+                self._current_memory_usage += estimated_size
 
                 return circle_img
                 
         except Exception as e:
-            print(f"圆形裁剪失败: {e}")
+            logger.error(f"圆形裁剪失败: {e}", exc_info=True)
             # 返回空白圆形图片
             return self._create_blank_circle()
     
@@ -222,13 +291,15 @@ class ImageProcessor:
         返回: QPixmap - 可用于PySide6显示的图片
         """
         if not PYSIDE6_AVAILABLE:
-            print("PySide6不可用，无法创建预览图片")
+            logger.warning("PySide6不可用，无法创建预览图片")
             return None
 
         # 处理参数
         if params is not None:
             process_params = params
         else:
+            if image_path is None:
+                raise ImageProcessingError("必须提供image_path或params参数")
             process_params = ImageProcessParams(image_path, scale, offset_x, offset_y, rotation)
 
         # 检查预览缓存
@@ -246,21 +317,25 @@ class ImageProcessor:
                 circle_img = circle_img.resize((preview_size, preview_size), Image.Resampling.LANCZOS)
 
             # 转换为QPixmap
-            buffer = BytesIO()
-            circle_img.save(buffer, format='PNG')
-            buffer.seek(0)
+            with resource_manager(BytesIO()) as buffer:
+                circle_img.save(buffer, format='PNG')
+                buffer.seek(0)
 
-            pixmap = QPixmap()
-            pixmap.loadFromData(buffer.getvalue())
+                pixmap = QPixmap()
+                pixmap.loadFromData(buffer.getvalue())
 
             # 缓存预览结果
-            self._manage_cache(self._preview_cache)
+            self._manage_cache(self._preview_cache, is_preview_cache=True)
             self._preview_cache[cache_key] = pixmap
+
+            # 估算内存使用
+            estimated_size = pixmap.width() * pixmap.height() * 4  # RGBA
+            self._current_memory_usage += estimated_size
 
             return pixmap
 
         except Exception as e:
-            print(f"创建预览图片失败: {e}")
+            logger.error(f"创建预览图片失败: {e}", exc_info=True)
             # 返回空白预览
             blank_pixmap = QPixmap(preview_size, preview_size)
             blank_pixmap.fill()  # 填充为白色
@@ -288,7 +363,7 @@ class ImageProcessor:
                 return optimal_scale
                 
         except Exception as e:
-            print(f"计算最佳缩放比例失败: {e}")
+            logger.error(f"计算最佳缩放比例失败: {e}", exc_info=True)
             return 1.0
     
     def get_max_offset_range(self, image_path, scale=1.0):
@@ -314,7 +389,7 @@ class ImageProcessor:
                 return max_offset_x, max_offset_y
                 
         except Exception as e:
-            print(f"计算最大偏移范围失败: {e}")
+            logger.error(f"计算最大偏移范围失败: {e}", exc_info=True)
             return 0, 0
 
 class CircleEditor:

@@ -4,25 +4,16 @@ A4排版引擎模块
 """
 
 import math
-import sys
-import os
 from io import BytesIO
 
-from PIL import Image, ImageDraw
-
-# 添加父目录到路径
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from utils.config import (
-    A4_WIDTH_PX, A4_HEIGHT_PX, DEFAULT_SPACING, DEFAULT_MARGIN,
-    mm_to_pixels, app_config
+# 导入公共模块
+from common.imports import PIL_AVAILABLE, PYSIDE6_AVAILABLE, Image, ImageDraw, QPixmap
+from common.constants import (
+    A4_WIDTH_PX, A4_HEIGHT_PX, DEFAULT_SPACING_MM, DEFAULT_MARGIN_MM,
+    mm_to_pixels
 )
-
-# PySide6导入（用于预览功能）
-try:
-    from PySide6.QtGui import QPixmap
-    PYSIDE6_AVAILABLE = True
-except ImportError:
-    PYSIDE6_AVAILABLE = False
+from common.error_handler import error_handler, resource_manager, logger, LayoutError
+from utils.config import app_config
 
 class LayoutEngine:
     """A4排版引擎类"""
@@ -42,6 +33,18 @@ class LayoutEngine:
             oldest_key = next(iter(self._layout_cache))
             del self._layout_cache[oldest_key]
 
+    def clear_cache(self):
+        """清空所有缓存，释放内存"""
+        self._layout_cache.clear()
+        logger.info("布局引擎缓存已清空")
+
+    def get_cache_info(self):
+        """获取缓存信息"""
+        return {
+            'layout_cache_size': len(self._layout_cache),
+            'max_cache_size': self._max_layout_cache
+        }
+
     @property
     def badge_diameter_px(self):
         """获取当前圆形直径（像素）"""
@@ -52,7 +55,7 @@ class LayoutEngine:
         """获取当前圆形半径（像素）"""
         return app_config.badge_radius_px
         
-    def calculate_grid_layout(self, spacing_mm=DEFAULT_SPACING, margin_mm=DEFAULT_MARGIN):
+    def calculate_grid_layout(self, spacing_mm=DEFAULT_SPACING_MM, margin_mm=DEFAULT_MARGIN_MM):
         """
         计算网格排列布局（带缓存优化）
         参数:
@@ -114,7 +117,7 @@ class LayoutEngine:
 
         return result
     
-    def calculate_compact_layout(self, spacing_mm=DEFAULT_SPACING, margin_mm=DEFAULT_MARGIN):
+    def calculate_compact_layout(self, spacing_mm=DEFAULT_SPACING_MM, margin_mm=DEFAULT_MARGIN_MM):
         """
         计算紧密排列布局（六边形蜂巢密排）
         优化算法：实现4-3-4模式的紧凑排列，最大化利用A4空间
@@ -289,8 +292,8 @@ class LayoutEngine:
 
         return positions
     
-    def create_layout_preview(self, image_items, layout_type='grid', spacing_mm=DEFAULT_SPACING,
-                            margin_mm=DEFAULT_MARGIN, preview_scale=0.5):
+    def create_layout_preview(self, image_items, layout_type='grid', spacing_mm=DEFAULT_SPACING_MM,
+                            margin_mm=DEFAULT_MARGIN_MM, preview_scale=0.5):
         """
         创建排版预览图片
         参数:
@@ -435,7 +438,7 @@ class LayoutEngine:
         return blank_pixmap
     
     def calculate_multi_page_layout(self, image_count, layout_type='grid',
-                                   spacing_mm=DEFAULT_SPACING, margin_mm=DEFAULT_MARGIN):
+                                   spacing_mm=DEFAULT_SPACING_MM, margin_mm=DEFAULT_MARGIN_MM):
         """
         计算多页面布局
         参数:
@@ -483,7 +486,7 @@ class LayoutEngine:
             'margin_mm': margin_mm
         }
 
-    def get_layout_info(self, layout_type='grid', spacing_mm=DEFAULT_SPACING, margin_mm=DEFAULT_MARGIN):
+    def get_layout_info(self, layout_type='grid', spacing_mm=DEFAULT_SPACING_MM, margin_mm=DEFAULT_MARGIN_MM):
         """
         获取布局信息
         参数:
@@ -506,7 +509,7 @@ class LayoutEngine:
         }
 
     def create_multi_page_preview(self, image_items, layout_type='grid',
-                                 spacing_mm=DEFAULT_SPACING, margin_mm=DEFAULT_MARGIN,
+                                 spacing_mm=DEFAULT_SPACING_MM, margin_mm=DEFAULT_MARGIN_MM,
                                  preview_scale=0.5):
         """
         创建多页面排版预览图片列表
