@@ -1,6 +1,9 @@
 # BadgePatternTool - 徽章图案工具
 
-一个专业的徽章制作图片处理和排版工具，支持将用户图片裁剪成可配置直径的圆形并在A4纸上智能排版。
+![alt text](<img/Dark theme.png>)
+![alt text](<img/Light theme.png>)
+
+方便DIY的徽章制作图片处理和排版工具，支持将用户图片裁剪成可配置直径的圆形并在A4纸上智能排版。
 
 ## 🎯 功能特性
 
