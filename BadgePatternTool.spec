@@ -84,7 +84,7 @@ a = Analysis(
         # 网络相关模块 (reportlab需要部分，谨慎排除)
         'requests',
         'urllib3',
-        'email',
+        # 'email',       # reportlab需要，不能排除
         'smtplib',
         'poplib',
         'imaplib',
@@ -92,8 +92,8 @@ a = Analysis(
         'telnetlib',
         'socketserver',
         'http.server',
-        'http.client',
-        'http.cookies',
+        # 'http.client', # 可能被需要，保留
+        # 'http.cookies', # 可能被需要，保留
         'xmlrpc',
 
         # 其他不需要的标准库
@@ -217,23 +217,24 @@ a = Analysis(
         'PIL.ImageWin',
 
         # ReportLab高级功能模块 (新增优化)
+        # 注意：不能排除rl_config，reportlab核心需要
         'reportlab.graphics',
         'reportlab.platypus.tableofcontents',
         'reportlab.platypus.xpreformatted',
-        'reportlab.lib.styles',
-        'reportlab.lib.units',
-        'reportlab.lib.enums',
+        # 'reportlab.lib.styles',    # 可能被需要，保留
+        # 'reportlab.lib.units',     # 可能被需要，保留
+        # 'reportlab.lib.enums',     # 可能被需要，保留
         'reportlab.lib.sequencer',
         'reportlab.lib.randomtext',
         'reportlab.lib.testutils',
         'reportlab.lib.validators',
-        'reportlab.pdfbase.pdfutils',
-        'reportlab.pdfbase.pdfdoc',
-        'reportlab.pdfbase.pdfpattern',
-        'reportlab.pdfbase.cidfonts',
-        'reportlab.pdfbase.ttfonts',
-        'reportlab.pdfbase.afm',
-        'reportlab.rl_config',
+        # 'reportlab.pdfbase.pdfutils',  # 可能被需要，保留
+        # 'reportlab.pdfbase.pdfdoc',    # 可能被需要，保留
+        # 'reportlab.pdfbase.pdfpattern', # 可能被需要，保留
+        # 'reportlab.pdfbase.cidfonts',   # 可能被需要，保留
+        # 'reportlab.pdfbase.ttfonts',    # 可能被需要，保留
+        # 'reportlab.pdfbase.afm',        # 可能被需要，保留
+        # 'reportlab.rl_config',     # reportlab核心需要，不能排除
 
         # 更多编码和压缩模块 (新增优化)
         # 注意：不能排除zipfile，PyInstaller运行时需要
@@ -245,9 +246,9 @@ a = Analysis(
         # 'base64',   # 可能被其他模块需要，保留
         # 'binascii', # 可能被其他模块需要，保留
         # 'codecs',   # 编码相关，可能被需要，保留
-        'locale',
-        'gettext',
-        'unicodedata',
+        # 'locale',   # 本地化可能被需要，保留
+        # 'gettext',  # PySide6需要，不能排除
+        # 'unicodedata', # Unicode数据可能被需要，保留
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
