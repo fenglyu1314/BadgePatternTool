@@ -52,25 +52,38 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         
+    - name: 验证项目结构
+      run: |
+        echo "=== 项目结构检查 ==="
+        python -c "
+        import os
+        from pathlib import Path
+
+        # 检查关键目录
+        dirs = ['src', 'src/common', 'src/core', 'src/ui', 'src/utils', 'scripts', 'tests']
+        for d in dirs:
+            if Path(d).exists():
+                print(f'✅ {d}/ 目录存在')
+            else:
+                print(f'❌ {d}/ 目录缺失')
+
+        # 检查关键文件
+        files = ['src/main.py', 'src/common/constants.py', 'requirements.txt', 'BadgePatternTool.spec']
+        for f in files:
+            if Path(f).exists():
+                print(f'✅ {f} 存在')
+            else:
+                print(f'❌ {f} 缺失')
+        "
+
     - name: 运行代码质量检查
       run: |
         echo "=== 代码质量检查 ==="
         python scripts/dev_tools.py quality
         echo "质量检查完成"
 
-    - name: 运行轻量级测试
+    - name: 运行CI安全测试
       run: |
-        echo "=== 运行轻量级测试 ==="
+        echo "=== 运行CI安全测试 ==="
         python scripts/ci_tests.py
-        echo "轻量级测试完成"
-
-    - name: 检查项目结构
-      run: |
-        echo "=== 项目结构检查 ==="
-        ls -la
-        echo "=== src目录 ==="
-        ls -la src/
-        echo "=== 检查关键文件 ==="
-        test -f src/main.py && echo "✅ main.py 存在" || echo "❌ main.py 缺失"
-        test -f src/common/constants.py && echo "✅ constants.py 存在" || echo "❌ constants.py 缺失"
-        test -f requirements.txt && echo "✅ requirements.txt 存在" || echo "❌ requirements.txt 缺失"
+        echo "CI测试完成"
